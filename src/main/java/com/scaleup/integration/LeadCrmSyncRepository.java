@@ -2,6 +2,7 @@ package com.scaleup.integration;
 
 import com.scaleup.lead.Lead;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -34,6 +35,13 @@ public interface LeadCrmSyncRepository
     boolean existsByLeadAndDestination(
             Lead lead,
             CrmDestination destination
+    );
+
+    @EntityGraph(attributePaths = "lead")
+    Optional<LeadCrmSync>
+    findFirstByDestinationAndExternalContactId(
+            CrmDestination destination,
+            String externalContactId
     );
 
     @Query("""

@@ -21,12 +21,12 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
-
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -97,7 +97,6 @@ public class HighLevelInternalCrmClient
                         .getInternalCrm()
                         .getLocationId();
 
-
         String processEnvToken =
                 System.getenv(
                         "HIGHLEVEL_INTERNAL_CRM_TOKEN"
@@ -129,14 +128,17 @@ public class HighLevelInternalCrmClient
                         .getInternalCrm()
                         .getToken();
 
-        if (token == null || token.isBlank()) {
+        if (
+                token == null
+                        || token.isBlank()
+        ) {
             throw new IllegalStateException(
                     "HighLevel Internal CRM token is not configured."
             );
         }
 
-        token = token.trim();
-
+        token =
+                token.trim();
 
         System.out.println(
                 "HighLevel token loaded: length="
@@ -147,7 +149,10 @@ public class HighLevelInternalCrmClient
                         + token.startsWith("Bearer ")
         );
 
-        if (locationId == null || locationId.isBlank()) {
+        if (
+                locationId == null
+                        || locationId.isBlank()
+        ) {
             throw new IllegalStateException(
                     "HighLevel Internal CRM location ID is not configured."
             );
@@ -155,7 +160,15 @@ public class HighLevelInternalCrmClient
 
         if (lead.getLeadType() == null) {
             throw new IllegalStateException(
-                    "Lead type is missing for lead " + lead.getPublicId()
+                    "Lead type is missing for lead "
+                            + lead.getPublicId()
+            );
+        }
+
+        if (lead.getAgency() == null) {
+            throw new IllegalStateException(
+                    "Agency is missing for lead "
+                            + lead.getPublicId()
             );
         }
 
@@ -194,6 +207,11 @@ public class HighLevelInternalCrmClient
                         fieldMappings
                 );
 
+        List<String> tags =
+                buildContactTags(
+                        lead
+                );
+
         HighLevelContactRequest contactRequest =
                 new HighLevelContactRequest(
                         locationId,
@@ -202,6 +220,7 @@ public class HighLevelInternalCrmClient
                         lead.getEmail(),
                         lead.getPhone(),
                         lead.getSource(),
+                        tags,
                         customFields
                 );
 
@@ -290,6 +309,28 @@ public class HighLevelInternalCrmClient
         List<HighLevelCustomFieldValue> values =
                 new ArrayList<>();
 
+        /*
+         * Shared lead-attribution fields.
+         */
+        add(
+                values,
+                mappings,
+                "contact.agency_name",
+                lead.getAgency().getName()
+        );
+
+        add(
+                values,
+                mappings,
+                "contact.lead_type",
+                mapLeadType(
+                        lead.getLeadType()
+                )
+        );
+
+        /*
+         * General contact fields.
+         */
         add(
                 values,
                 mappings,
@@ -297,14 +338,18 @@ public class HighLevelInternalCrmClient
                 lead.getZipCode()
         );
 
-        if (lead.getPreferredContactMethod() != null) {
+        if (
+                lead.getPreferredContactMethod()
+                        != null
+        ) {
             add(
                     values,
                     mappings,
                     "contact.preferred_contact_method",
                     fieldValueMapper
                             .mapPreferredContactMethod(
-                                    lead.getPreferredContactMethod()
+                                    lead
+                                            .getPreferredContactMethod()
                                             .name()
                             )
             );
@@ -321,12 +366,16 @@ public class HighLevelInternalCrmClient
                 values,
                 mappings,
                 "contact.lead_source",
-                fieldValueMapper.mapLeadSource(
-                        lead.getSource()
-                )
+                fieldValueMapper
+                        .mapLeadSource(
+                                lead.getSource()
+                        )
         );
 
-        if (lead.getLeadType() == LeadType.CLIENT) {
+        if (
+                lead.getLeadType()
+                        == LeadType.CLIENT
+        ) {
 
             addClientFields(
                     lead,
@@ -334,7 +383,10 @@ public class HighLevelInternalCrmClient
                     mappings
             );
 
-        } else if (lead.getLeadType() == LeadType.CAREGIVER) {
+        } else if (
+                lead.getLeadType()
+                        == LeadType.CAREGIVER
+        ) {
 
             addCaregiverFields(
                     lead,
@@ -342,6 +394,7 @@ public class HighLevelInternalCrmClient
                     mappings
             );
         }
+
         return values;
     }
 
@@ -366,36 +419,40 @@ public class HighLevelInternalCrmClient
                 values,
                 mappings,
                 "contact.service_needed",
-                fieldValueMapper.mapServiceNeeded(
-                        details.getServiceNeeded()
-                )
+                fieldValueMapper
+                        .mapServiceNeeded(
+                                details.getServiceNeeded()
+                        )
         );
 
         add(
                 values,
                 mappings,
                 "contact.care_start_timeline",
-                fieldValueMapper.mapCareStartTimeline(
-                        details.getCareStartTimeline()
-                )
+                fieldValueMapper
+                        .mapCareStartTimeline(
+                                details.getCareStartTimeline()
+                        )
         );
 
         add(
                 values,
                 mappings,
                 "contact.payer_type",
-                fieldValueMapper.mapPayerType(
-                        details.getPayerType()
-                )
+                fieldValueMapper
+                        .mapPayerType(
+                                details.getPayerType()
+                        )
         );
 
         add(
                 values,
                 mappings,
                 "contact.decision_maker",
-                fieldValueMapper.mapDecisionMaker(
-                        details.getDecisionMaker()
-                )
+                fieldValueMapper
+                        .mapDecisionMaker(
+                                details.getDecisionMaker()
+                        )
         );
 
         add(
@@ -410,39 +467,6 @@ public class HighLevelInternalCrmClient
                 mappings,
                 "contact.ai_summary",
                 details.getAiSummary()
-        );
-    }
-
-    private void add(
-            List<HighLevelCustomFieldValue> values,
-            Map<String, HighLevelCustomFieldMapping> mappings,
-            String fieldKey,
-            Object value
-    ) {
-
-        if (value == null) {
-            return;
-        }
-
-        if (
-                value instanceof String stringValue
-                        && stringValue.isBlank()
-        ) {
-            return;
-        }
-
-        HighLevelCustomFieldMapping mapping =
-                mappings.get(fieldKey);
-
-        if (mapping == null) {
-            return;
-        }
-
-        values.add(
-                new HighLevelCustomFieldValue(
-                        mapping.getExternalFieldId(),
-                        value
-                )
         );
     }
 
@@ -481,27 +505,30 @@ public class HighLevelInternalCrmClient
                 values,
                 mappings,
                 "contact.availability",
-                fieldValueMapper.mapAvailability(
-                        details.getAvailability()
-                )
+                fieldValueMapper
+                        .mapAvailability(
+                                details.getAvailability()
+                        )
         );
 
         add(
                 values,
                 mappings,
                 "contact.transportation",
-                fieldValueMapper.mapTransportation(
-                        details.getTransportation()
-                )
+                fieldValueMapper
+                        .mapTransportation(
+                                details.getTransportation()
+                        )
         );
 
         add(
                 values,
                 mappings,
                 "contact.preferred_schedule",
-                fieldValueMapper.mapPreferredSchedule(
-                        details.getPreferredSchedule()
-                )
+                fieldValueMapper
+                        .mapPreferredSchedule(
+                                details.getPreferredSchedule()
+                        )
         );
 
         add(
@@ -522,18 +549,20 @@ public class HighLevelInternalCrmClient
                 values,
                 mappings,
                 "contact.background_status_check",
-                fieldValueMapper.mapBackgroundCheckStatus(
-                        details.getBackgroundCheckStatus()
-                )
+                fieldValueMapper
+                        .mapBackgroundCheckStatus(
+                                details.getBackgroundCheckStatus()
+                        )
         );
 
         add(
                 values,
                 mappings,
                 "contact.interview_status",
-                fieldValueMapper.mapInterviewStatus(
-                        details.getInterviewStatus()
-                )
+                fieldValueMapper
+                        .mapInterviewStatus(
+                                details.getInterviewStatus()
+                        )
         );
 
         add(
@@ -551,6 +580,141 @@ public class HighLevelInternalCrmClient
         );
     }
 
+    private void add(
+            List<HighLevelCustomFieldValue> values,
+            Map<String, HighLevelCustomFieldMapping> mappings,
+            String fieldKey,
+            Object value
+    ) {
+
+        if (value == null) {
+            return;
+        }
+
+        if (
+                value instanceof String stringValue
+                        && stringValue.isBlank()
+        ) {
+            return;
+        }
+
+        HighLevelCustomFieldMapping mapping =
+                mappings.get(
+                        fieldKey
+                );
+
+        if (mapping == null) {
+
+            System.out.println(
+                    "HighLevel custom field mapping not found for fieldKey="
+                            + fieldKey
+            );
+
+            return;
+        }
+
+        values.add(
+                new HighLevelCustomFieldValue(
+                        mapping.getExternalFieldId(),
+                        value
+                )
+        );
+    }
+
+    private List<String> buildContactTags(
+            Lead lead
+    ) {
+
+        List<String> tags =
+                new ArrayList<>();
+
+        if (
+                lead.getAgency() != null
+                        && lead.getAgency().getSlug() != null
+                        && !lead.getAgency()
+                        .getSlug()
+                        .isBlank()
+        ) {
+
+            String agencyTag =
+                    normalizeTag(
+                            lead.getAgency()
+                                    .getSlug()
+                    );
+
+            if (!agencyTag.isBlank()) {
+
+                tags.add(
+                        "agency-"
+                                + agencyTag
+                );
+            }
+        }
+
+        if (
+                lead.getLeadType()
+                        == LeadType.CLIENT
+        ) {
+
+            tags.add(
+                    "client-lead"
+            );
+
+        } else if (
+                lead.getLeadType()
+                        == LeadType.CAREGIVER
+        ) {
+
+            tags.add(
+                    "caregiver-lead"
+            );
+        }
+
+        return tags;
+    }
+
+    private String mapLeadType(
+            LeadType leadType
+    ) {
+
+        if (leadType == null) {
+            return null;
+        }
+
+        return switch (leadType) {
+
+            case CLIENT ->
+                    "Client";
+
+            case CAREGIVER ->
+                    "Caregiver";
+        };
+    }
+
+    private String normalizeTag(
+            String value
+    ) {
+
+        if (
+                value == null
+                        || value.isBlank()
+        ) {
+            return "";
+        }
+
+        return value
+                .trim()
+                .toLowerCase()
+                .replaceAll(
+                        "[^a-z0-9]+",
+                        "-"
+                )
+                .replaceAll(
+                        "^-+|-+$",
+                        ""
+                );
+    }
+
     private String buildOpportunityName(
             Lead lead
     ) {
@@ -564,17 +728,27 @@ public class HighLevelInternalCrmClient
 
         if (
                 lead.getLastName() != null
-                        && !lead.getLastName().isBlank()
+                        && !lead.getLastName()
+                        .isBlank()
         ) {
+
             name.append(" ")
                     .append(
                             lead.getLastName()
                     );
         }
 
-        if (lead.getLeadType() == LeadType.CLIENT) {
-            name.append(" - Client Lead");
+        if (
+                lead.getLeadType()
+                        == LeadType.CLIENT
+        ) {
+
+            name.append(
+                    " - Client Lead"
+            );
+
         } else {
+
             name.append(
                     " - Caregiver Applicant"
             );
@@ -582,10 +756,13 @@ public class HighLevelInternalCrmClient
 
         return name.toString();
     }
+
     private String tokenFingerprint(
             String token
     ) {
+
         try {
+
             MessageDigest digest =
                     MessageDigest.getInstance(
                             "SHA-256"
@@ -608,6 +785,7 @@ public class HighLevelInternalCrmClient
             );
 
         } catch (NoSuchAlgorithmException ex) {
+
             throw new IllegalStateException(
                     "Unable to calculate token fingerprint.",
                     ex

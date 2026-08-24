@@ -14,8 +14,10 @@ import com.scaleup.integration.CrmDestination;
 import com.scaleup.integration.CrmSyncStatus;
 import com.scaleup.integration.LeadCrmSync;
 import com.scaleup.integration.LeadCrmSyncRepository;
+import com.scaleup.integration.agencycrm.AgencyCrmSyncRequestedEvent;
 import com.scaleup.lead.Lead;
 import com.scaleup.lead.LeadRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,7 +27,8 @@ import java.util.UUID;
 @Service
 public class AiQualificationService {
 
-    private final LeadRepository leadRepository;
+    private final LeadRepository
+            leadRepository;
 
     private final LeadAiContactRepository
             leadAiContactRepository;
@@ -39,12 +42,16 @@ public class AiQualificationService {
     private final LeadCrmSyncRepository
             leadCrmSyncRepository;
 
+    private final ApplicationEventPublisher
+            eventPublisher;
+
     public AiQualificationService(
             LeadRepository leadRepository,
             LeadAiContactRepository leadAiContactRepository,
             ClientLeadDetailsRepository clientLeadDetailsRepository,
             CaregiverLeadDetailsRepository caregiverLeadDetailsRepository,
-            LeadCrmSyncRepository leadCrmSyncRepository
+            LeadCrmSyncRepository leadCrmSyncRepository,
+            ApplicationEventPublisher eventPublisher
     ) {
         this.leadRepository =
                 leadRepository;
@@ -60,6 +67,9 @@ public class AiQualificationService {
 
         this.leadCrmSyncRepository =
                 leadCrmSyncRepository;
+
+        this.eventPublisher =
+                eventPublisher;
     }
 
     @Transactional
@@ -70,7 +80,9 @@ public class AiQualificationService {
 
         Lead lead =
                 leadRepository
-                        .findByPublicId(leadId)
+                        .findByPublicId(
+                                leadId
+                        )
                         .orElseThrow(() ->
                                 new ResourceNotFoundException(
                                         "Lead was not found."
@@ -107,13 +119,30 @@ public class AiQualificationService {
                 };
 
         /*
-         * The agency is not eligible for synchronization
-         * until qualification has successfully persisted.
+         * The agency is eligible for synchronization
+         * only after qualification data has been
+         * successfully persisted.
          */
         agencyCrmSync.markPending();
 
-        leadCrmSyncRepository.saveAndFlush(
-                agencyCrmSync
+        leadCrmSyncRepository
+                .saveAndFlush(
+                        agencyCrmSync
+                );
+
+        /*
+         * Publish inside the transaction.
+         *
+         * AgencyCrmSyncEventListener uses
+         * TransactionPhase.AFTER_COMMIT,
+         * so the actual agency transfer will
+         * not begin unless this transaction
+         * successfully commits.
+         */
+        eventPublisher.publishEvent(
+                new AgencyCrmSyncRequestedEvent(
+                        lead.getPublicId()
+                )
         );
 
         return new AiQualificationFinalizeResponse(
@@ -132,7 +161,9 @@ public class AiQualificationService {
 
         LeadAiContact aiContact =
                 leadAiContactRepository
-                        .findByLeadPublicId(leadId)
+                        .findByLeadPublicId(
+                                leadId
+                        )
                         .orElseThrow(() ->
                                 new ResourceNotFoundException(
                                         "AI contact record was not found."
@@ -189,7 +220,10 @@ public class AiQualificationService {
             AiQualificationFinalizeRequest request
     ) {
 
-        if (request.caregiverScreening() != null) {
+        if (
+                request.caregiverScreening()
+                        != null
+        ) {
             throw new InvalidRequestException(
                     "Caregiver screening data cannot be submitted for a CLIENT lead."
             );
@@ -229,11 +263,15 @@ public class AiQualificationService {
 
         ClientLeadDetails savedDetails =
                 clientLeadDetailsRepository
-                        .saveAndFlush(details);
+                        .saveAndFlush(
+                                details
+                        );
 
         return new QualificationResult(
-                savedDetails.getAiQualificationScore(),
-                savedDetails.getAiSummary()
+                savedDetails
+                        .getAiQualificationScore(),
+                savedDetails
+                        .getAiSummary()
         );
     }
 
@@ -242,7 +280,10 @@ public class AiQualificationService {
             AiQualificationFinalizeRequest request
     ) {
 
-        if (request.clientQualification() != null) {
+        if (
+                request.clientQualification()
+                        != null
+        ) {
             throw new InvalidRequestException(
                     "Client qualification data cannot be submitted for a CAREGIVER lead."
             );
@@ -294,11 +335,15 @@ public class AiQualificationService {
 
         CaregiverLeadDetails savedDetails =
                 caregiverLeadDetailsRepository
-                        .saveAndFlush(details);
+                        .saveAndFlush(
+                                details
+                        );
 
         return new QualificationResult(
-                savedDetails.getAiScreeningScore(),
-                savedDetails.getAiScreeningSummary()
+                savedDetails
+                        .getAiScreeningScore(),
+                savedDetails
+                        .getAiScreeningSummary()
         );
     }
 

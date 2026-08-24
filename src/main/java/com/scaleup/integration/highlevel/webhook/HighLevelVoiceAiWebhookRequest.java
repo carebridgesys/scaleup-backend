@@ -7,6 +7,7 @@ public record HighLevelVoiceAiWebhookRequest(
         String locationId,
         String contactId,
         String callId,
+        String agentType,
         String summary,
         String transcript,
         Map<String, Object> extractedData

@@ -11,6 +11,8 @@ public record HighLevelContactRequest(
         String phone,
         String source,
 
+        List<String> tags,
+
         List<HighLevelCustomFieldValue> customFields
 
 ) {
