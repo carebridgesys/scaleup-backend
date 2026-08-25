@@ -49,6 +49,12 @@ public class LeadAiTranscript {
     )
     private String externalCallId;
 
+    @Column(
+            name = "event_key",
+            length = 64
+    )
+    private String eventKey;
+
     @Enumerated(EnumType.STRING)
     @Column(
             name = "agent_type",
@@ -91,34 +97,46 @@ public class LeadAiTranscript {
             Lead lead,
             String provider,
             String externalCallId,
+            String eventKey,
             LeadType agentType,
             String transcript,
             String summary
     ) {
-        this.lead = Objects.requireNonNull(
-                lead,
-                "Lead must not be null."
-        );
 
-        this.provider = requireText(
-                provider,
-                "Provider"
-        );
+        this.lead =
+                Objects.requireNonNull(
+                        lead,
+                        "Lead must not be null."
+                );
+
+        this.provider =
+                requireText(
+                        provider,
+                        "Provider"
+                );
 
         this.externalCallId =
                 normalizeNullableText(
                         externalCallId
                 );
 
-        this.agentType = Objects.requireNonNull(
-                agentType,
-                "Agent type must not be null."
-        );
+        this.eventKey =
+                requireText(
+                        eventKey,
+                        "Event key"
+                );
 
-        this.transcript = requireText(
-                transcript,
-                "Transcript"
-        );
+        this.agentType =
+                Objects.requireNonNull(
+                        agentType,
+                        "Agent type must not be null."
+                );
+
+        this.transcript =
+                requireText(
+                        transcript,
+                        "Transcript"
+                );
 
         this.summary =
                 normalizeNullableText(
@@ -131,22 +149,31 @@ public class LeadAiTranscript {
 
     @PrePersist
     protected void onCreate() {
+
         if (receivedAt == null) {
             receivedAt =
                     LocalDateTime.now();
         }
 
-        createdAt =
-                LocalDateTime.now();
+        if (createdAt == null) {
+            createdAt =
+                    LocalDateTime.now();
+        }
     }
 
     private static String requireText(
             String value,
             String fieldName
     ) {
-        if (value == null || value.isBlank()) {
+
+        if (
+                value == null
+                        || value.isBlank()
+        ) {
+
             throw new IllegalArgumentException(
-                    fieldName + " must not be blank."
+                    fieldName
+                            + " must not be blank."
             );
         }
 
@@ -156,7 +183,11 @@ public class LeadAiTranscript {
     private static String normalizeNullableText(
             String value
     ) {
-        if (value == null || value.isBlank()) {
+
+        if (
+                value == null
+                        || value.isBlank()
+        ) {
             return null;
         }
 
@@ -177,6 +208,10 @@ public class LeadAiTranscript {
 
     public String getExternalCallId() {
         return externalCallId;
+    }
+
+    public String getEventKey() {
+        return eventKey;
     }
 
     public LeadType getAgentType() {

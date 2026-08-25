@@ -3,9 +3,6 @@ package com.scaleup.integration.highlevel;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
-import java.util.HashMap;
-import java.util.Map;
-
 @Component
 @ConfigurationProperties(prefix = "highlevel")
 public class HighLevelProperties {
@@ -15,8 +12,11 @@ public class HighLevelProperties {
     private InternalCrm internalCrm =
             new InternalCrm();
 
-    private Map<String, AgencyCrm> agencies =
-            new HashMap<>();
+    private Http http =
+            new Http();
+
+    private Webhook webhook =
+            new Webhook();
 
     public String getBaseUrl() {
         return baseUrl;
@@ -35,36 +35,36 @@ public class HighLevelProperties {
     public void setInternalCrm(
             InternalCrm internalCrm
     ) {
-        this.internalCrm = internalCrm;
+        this.internalCrm =
+                internalCrm != null
+                        ? internalCrm
+                        : new InternalCrm();
     }
 
-    public Map<String, AgencyCrm> getAgencies() {
-        return agencies;
+    public Http getHttp() {
+        return http;
     }
 
-    public void setAgencies(
-            Map<String, AgencyCrm> agencies
+    public void setHttp(
+            Http http
     ) {
-        this.agencies =
-                agencies != null
-                        ? agencies
-                        : new HashMap<>();
+        this.http =
+                http != null
+                        ? http
+                        : new Http();
     }
 
-    public AgencyCrm getAgencyConfiguration(
-            String agencySlug
+    public Webhook getWebhook() {
+        return webhook;
+    }
+
+    public void setWebhook(
+            Webhook webhook
     ) {
-
-        if (
-                agencySlug == null
-                        || agencySlug.isBlank()
-        ) {
-            return null;
-        }
-
-        return agencies.get(
-                agencySlug.trim()
-        );
+        this.webhook =
+                webhook != null
+                        ? webhook
+                        : new Webhook();
     }
 
     public static class InternalCrm {
@@ -89,22 +89,54 @@ public class HighLevelProperties {
         public void setLocationId(
                 String locationId
         ) {
-            this.locationId = locationId;
+            this.locationId =
+                    locationId;
         }
     }
 
-    public static class AgencyCrm {
+    public static class Http {
 
-        private String token;
+        private int connectTimeoutMs =
+                5000;
 
-        public String getToken() {
-            return token;
+        private int readTimeoutMs =
+                15000;
+
+        public int getConnectTimeoutMs() {
+            return connectTimeoutMs;
         }
 
-        public void setToken(
-                String token
+        public void setConnectTimeoutMs(
+                int connectTimeoutMs
         ) {
-            this.token = token;
+            this.connectTimeoutMs =
+                    connectTimeoutMs;
+        }
+
+        public int getReadTimeoutMs() {
+            return readTimeoutMs;
+        }
+
+        public void setReadTimeoutMs(
+                int readTimeoutMs
+        ) {
+            this.readTimeoutMs =
+                    readTimeoutMs;
+        }
+    }
+
+    public static class Webhook {
+
+        private String secret;
+
+        public String getSecret() {
+            return secret;
+        }
+
+        public void setSecret(
+                String secret
+        ) {
+            this.secret = secret;
         }
     }
 }

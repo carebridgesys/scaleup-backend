@@ -20,15 +20,26 @@ import com.scaleup.integration.LeadCrmSync;
 import com.scaleup.integration.LeadCrmSyncRepository;
 import com.scaleup.lead.Lead;
 import com.scaleup.lead.LeadType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
 @Service
 public class HighLevelVoiceAiWebhookService {
+
+    private static final Logger log =
+            LoggerFactory.getLogger(
+                    HighLevelVoiceAiWebhookService.class
+            );
 
     private static final String HIGHLEVEL_PROVIDER =
             "HIGHLEVEL_VOICE_AI";
@@ -63,6 +74,7 @@ public class HighLevelVoiceAiWebhookService {
             ClientTranscriptProcessingService clientTranscriptProcessingService,
             AiQualificationService aiQualificationService
     ) {
+
         this.leadCrmSyncRepository =
                 leadCrmSyncRepository;
 
@@ -107,15 +119,16 @@ public class HighLevelVoiceAiWebhookService {
                                 contactId
                         );
 
+        /*
+         * A HighLevel webhook may be delivered for
+         * contacts that were not created by ScaleUp.
+         *
+         * Ignore those callbacks safely.
+         */
         if (syncOptional.isEmpty()) {
 
-            System.out.println(
-                    "No ScaleUp lead found for HighLevel contactId = "
-                            + contactId
-            );
-
-            System.out.println(
-                    "Webhook ignored safely"
+            log.info(
+                    "Ignoring Voice AI webhook because no ScaleUp lead matches the HighLevel contact."
             );
 
             return;
@@ -126,33 +139,18 @@ public class HighLevelVoiceAiWebhookService {
                         .get()
                         .getLead();
 
+        /*
+         * Never allow a CLIENT webhook to process
+         * a CAREGIVER lead or vice versa.
+         */
         if (
                 lead.getLeadType()
                         != webhookLeadType
         ) {
 
-            System.out.println(
-                    "HighLevel Voice AI webhook lead type mismatch"
-            );
-
-            System.out.println(
-                    "contactId = "
-                            + contactId
-            );
-
-            System.out.println(
-                    "webhook agentType = "
-                            + webhookLeadType
-            );
-
-            System.out.println(
-                    "ScaleUp leadType = "
-                            + lead.getLeadType()
-            );
-
-            System.out.println(
-                    "leadPublicId = "
-                            + lead.getPublicId()
+            log.warn(
+                    "Ignoring Voice AI webhook because agent type does not match ScaleUp lead type. leadId={}",
+                    lead.getPublicId()
             );
 
             return;
@@ -161,36 +159,11 @@ public class HighLevelVoiceAiWebhookService {
         UUID leadPublicId =
                 lead.getPublicId();
 
-        System.out.println(
-                "Matched ScaleUp lead"
-        );
-
-        System.out.println(
-                "leadPublicId = "
-                        + leadPublicId
-        );
-
-        System.out.println(
-                "leadType = "
-                        + lead.getLeadType()
-        );
-
-        System.out.println(
-                "HighLevel contactId = "
-                        + contactId
-        );
-
-        System.out.println(
-                "transcript received = "
-                        + hasText(
-                        request.transcript()
-                )
-        );
-
         if (!hasText(request.transcript())) {
 
-            System.out.println(
-                    "Webhook processing stopped because transcript is missing"
+            log.warn(
+                    "Ignoring Voice AI completion webhook because transcript is missing. leadId={}",
+                    leadPublicId
             );
 
             return;
@@ -201,22 +174,40 @@ public class HighLevelVoiceAiWebhookService {
                         request.callId()
                 );
 
+        /*
+         * Generate a deterministic identity for this
+         * webhook event.
+         *
+         * When HighLevel supplies a call ID, that is
+         * the preferred source of identity.
+         *
+         * When callId is absent, the identity is based
+         * on the matched ScaleUp lead, HighLevel contact,
+         * agent type and normalized transcript.
+         */
+        String eventKey =
+                buildEventKey(
+                        lead,
+                        contactId,
+                        webhookLeadType,
+                        externalCallId,
+                        request.transcript()
+                );
+
         boolean transcriptAlreadyExists =
-                externalCallId != null
-                        && leadAiTranscriptRepository
-                        .findFirstByProviderAndExternalCallId(
-                                HIGHLEVEL_PROVIDER,
-                                externalCallId
-                        )
-                        .isPresent();
+                leadAiTranscriptRepository
+                        .existsByEventKey(
+                                eventKey
+                        );
 
         /*
-         * Persist the transcript only once.
+         * Persist each Voice AI transcript exactly once.
          *
-         * We do not return immediately for a duplicate
-         * because a previous webhook may have persisted
-         * the transcript but failed before qualification
-         * or agency routing completed.
+         * We intentionally continue processing when the
+         * event already exists. A previous webhook may
+         * have persisted the transcript and then failed
+         * before lifecycle completion, qualification or
+         * agency routing.
          */
         if (!transcriptAlreadyExists) {
 
@@ -225,6 +216,7 @@ public class HighLevelVoiceAiWebhookService {
                             lead,
                             HIGHLEVEL_PROVIDER,
                             externalCallId,
+                            eventKey,
                             webhookLeadType,
                             request.transcript(),
                             request.summary()
@@ -235,18 +227,16 @@ public class HighLevelVoiceAiWebhookService {
                             transcript
                     );
 
-            System.out.println(
-                    "AI transcript persisted"
+            log.info(
+                    "Voice AI transcript persisted. leadId={}",
+                    leadPublicId
             );
 
         } else {
 
-            System.out.println(
-                    "Duplicate AI transcript detected"
-            );
-
-            System.out.println(
-                    "Continuing lifecycle/qualification checks safely"
+            log.info(
+                    "Duplicate Voice AI webhook detected; continuing recovery checks. leadId={}",
+                    leadPublicId
             );
         }
 
@@ -257,8 +247,12 @@ public class HighLevelVoiceAiWebhookService {
                 null;
 
         /*
-         * Apply the correct transcript processor
-         * depending on the lead type.
+         * Re-applying the transcript processor is safe
+         * because these services update the existing
+         * detail record rather than creating another lead.
+         *
+         * This is useful if an earlier webhook stopped
+         * after transcript persistence.
          */
         if (
                 webhookLeadType
@@ -272,10 +266,6 @@ public class HighLevelVoiceAiWebhookService {
                                     request.transcript()
                             );
 
-            logCaregiverDetails(
-                    caregiverDetails
-            );
-
         } else if (
                 webhookLeadType
                         == LeadType.CLIENT
@@ -287,16 +277,8 @@ public class HighLevelVoiceAiWebhookService {
                                     lead,
                                     request.transcript()
                             );
-
-            logClientDetails(
-                    clientDetails
-            );
         }
 
-        /*
-         * Ensure the AI lifecycle exists and
-         * is at least IN_PROGRESS.
-         */
         LeadAiContact aiContact =
                 ensureAiContactReady(
                         leadPublicId,
@@ -304,21 +286,16 @@ public class HighLevelVoiceAiWebhookService {
                 );
 
         /*
-         * If another callback already completed
-         * the AI lifecycle, do not complete it again.
+         * A replay after AI completion should not
+         * transition the lifecycle again.
          *
-         * We still attempt automatic qualification
-         * if the agency CRM has not yet been released.
+         * Qualification/routing recovery is still
+         * allowed if it never completed.
          */
         if (
                 aiContact.getStatus()
                         == AiContactStatus.COMPLETED
         ) {
-
-            System.out.println(
-                    "AI contact already completed for leadPublicId = "
-                            + leadPublicId
-            );
 
             finalizeQualificationIfNeeded(
                     lead,
@@ -332,37 +309,16 @@ public class HighLevelVoiceAiWebhookService {
         String transcriptReference =
                 buildTranscriptReference(
                         request,
-                        contactId
+                        contactId,
+                        eventKey
                 );
 
-        LeadAiContact completedContact =
-                aiContactLifecycleService
-                        .markCompleted(
-                                leadPublicId,
-                                transcriptReference
-                        );
+        aiContactLifecycleService
+                .markCompleted(
+                        leadPublicId,
+                        transcriptReference
+                );
 
-        System.out.println(
-                "AI contact marked COMPLETED"
-        );
-
-        System.out.println(
-                "aiContactStatus = "
-                        + completedContact
-                        .getStatus()
-        );
-
-        System.out.println(
-                "transcriptReference = "
-                        + completedContact
-                        .getTranscriptReference()
-        );
-
-        /*
-         * The lifecycle is now COMPLETED,
-         * so AiQualificationService is allowed
-         * to finalize qualification.
-         */
         finalizeQualificationIfNeeded(
                 lead,
                 clientDetails,
@@ -390,31 +346,21 @@ public class HighLevelVoiceAiWebhookService {
                         );
 
         /*
-         * NOT_REQUIRED means qualification has
-         * not yet released this lead.
+         * Only NOT_REQUIRED means qualification has
+         * never released this lead for agency routing.
          *
-         * Once it reaches PENDING, PROCESSING,
-         * SYNCED or FAILED, it is already in
-         * the agency-routing lifecycle.
+         * PENDING / PROCESSING / SYNCED / FAILED are all
+         * already part of the agency CRM lifecycle.
          */
         if (
                 agencyCrmSync.getSyncStatus()
                         != CrmSyncStatus.NOT_REQUIRED
         ) {
 
-            System.out.println(
-                    "Automatic qualification skipped"
-            );
-
-            System.out.println(
-                    "leadPublicId = "
-                            + lead.getPublicId()
-            );
-
-            System.out.println(
-                    "agencyCrmSyncStatus = "
-                            + agencyCrmSync
-                            .getSyncStatus()
+            log.info(
+                    "Voice AI qualification already released to agency CRM lifecycle. leadId={}, status={}",
+                    lead.getPublicId(),
+                    agencyCrmSync.getSyncStatus()
             );
 
             return;
@@ -426,6 +372,7 @@ public class HighLevelVoiceAiWebhookService {
         ) {
 
             if (clientDetails == null) {
+
                 throw new IllegalStateException(
                         "Client details are required to finalize automatic client qualification."
                 );
@@ -445,6 +392,7 @@ public class HighLevelVoiceAiWebhookService {
         ) {
 
             if (caregiverDetails == null) {
+
                 throw new IllegalStateException(
                         "Caregiver details are required to finalize automatic caregiver qualification."
                 );
@@ -484,17 +432,9 @@ public class HighLevelVoiceAiWebhookService {
                         qualificationRequest
                 );
 
-        System.out.println(
-                "Client qualification finalized automatically"
-        );
-
-        System.out.println(
-                "leadPublicId = "
-                        + lead.getPublicId()
-        );
-
-        System.out.println(
-                "agencyCrmSyncStatus = PENDING"
+        log.info(
+                "Automatic client qualification finalized. leadId={}",
+                lead.getPublicId()
         );
     }
 
@@ -528,17 +468,9 @@ public class HighLevelVoiceAiWebhookService {
                         qualificationRequest
                 );
 
-        System.out.println(
-                "Caregiver qualification finalized automatically"
-        );
-
-        System.out.println(
-                "leadPublicId = "
-                        + lead.getPublicId()
-        );
-
-        System.out.println(
-                "agencyCrmSyncStatus = PENDING"
+        log.info(
+                "Automatic caregiver qualification finalized. leadId={}",
+                lead.getPublicId()
         );
     }
 
@@ -571,11 +503,17 @@ public class HighLevelVoiceAiWebhookService {
                             request.callId()
                     );
 
+            /*
+             * If HighLevel omitted callId, create a stable
+             * lifecycle reference based on the contact.
+             */
             if (externalCallId == null) {
 
                 externalCallId =
                         "hl-contact-"
-                                + request.contactId();
+                                + normalizeRequired(
+                                request.contactId()
+                        );
             }
 
             return aiContactLifecycleService
@@ -589,103 +527,10 @@ public class HighLevelVoiceAiWebhookService {
         return aiContact;
     }
 
-    private void logClientDetails(
-            ClientLeadDetails details
-    ) {
-
-        System.out.println(
-                "Client transcript data applied"
-        );
-
-        System.out.println(
-                "serviceNeeded = "
-                        + details.getServiceNeeded()
-        );
-
-        System.out.println(
-                "careStartTimeline = "
-                        + details.getCareStartTimeline()
-        );
-
-        System.out.println(
-                "payerType = "
-                        + details.getPayerType()
-        );
-
-        System.out.println(
-                "decisionMaker = "
-                        + details.getDecisionMaker()
-        );
-
-        System.out.println(
-                "aiQualificationScore = "
-                        + details
-                        .getAiQualificationScore()
-        );
-
-        System.out.println(
-                "aiSummary = "
-                        + details.getAiSummary()
-        );
-    }
-
-    private void logCaregiverDetails(
-            CaregiverLeadDetails details
-    ) {
-
-        System.out.println(
-                "Caregiver transcript data applied"
-        );
-
-        System.out.println(
-                "yearsExperience = "
-                        + details.getYearsExperience()
-        );
-
-        System.out.println(
-                "certifications = "
-                        + details.getCertifications()
-        );
-
-        System.out.println(
-                "availability = "
-                        + details.getAvailability()
-        );
-
-        System.out.println(
-                "transportation = "
-                        + details.getTransportation()
-        );
-
-        System.out.println(
-                "preferredSchedule = "
-                        + details.getPreferredSchedule()
-        );
-
-        System.out.println(
-                "desiredHoursPerWeek = "
-                        + details.getDesiredHoursPerWeek()
-        );
-
-        System.out.println(
-                "serviceArea = "
-                        + details.getServiceArea()
-        );
-
-        System.out.println(
-                "aiScreeningScore = "
-                        + details.getAiScreeningScore()
-        );
-
-        System.out.println(
-                "aiScreeningSummary = "
-                        + details.getAiScreeningSummary()
-        );
-    }
-
     private String buildTranscriptReference(
             HighLevelVoiceAiWebhookRequest request,
-            String contactId
+            String contactId,
+            String eventKey
     ) {
 
         String callId =
@@ -694,12 +539,102 @@ public class HighLevelVoiceAiWebhookService {
                 );
 
         if (callId != null) {
+
             return "highlevel-call:"
                     + callId;
         }
 
-        return "highlevel-contact:"
-                + contactId;
+        /*
+         * The event key is more precise than using only
+         * the contact ID when callId is unavailable.
+         */
+        return "highlevel-event:"
+                + eventKey;
+    }
+
+    private String buildEventKey(
+            Lead lead,
+            String contactId,
+            LeadType agentType,
+            String externalCallId,
+            String transcript
+    ) {
+
+        String identity;
+
+        if (externalCallId != null) {
+
+            identity =
+                    HIGHLEVEL_PROVIDER
+                            + "|call|"
+                            + externalCallId;
+
+        } else {
+
+            identity =
+                    HIGHLEVEL_PROVIDER
+                            + "|lead|"
+                            + lead.getPublicId()
+                            + "|contact|"
+                            + contactId
+                            + "|agent|"
+                            + agentType.name()
+                            + "|transcript|"
+                            + normalizeTranscriptForHash(
+                            transcript
+                    );
+        }
+
+        return sha256(
+                identity
+        );
+    }
+
+    private String normalizeTranscriptForHash(
+            String transcript
+    ) {
+
+        return normalizeRequired(
+                transcript
+        )
+                .replaceAll(
+                        "\\s+",
+                        " "
+                )
+                .trim();
+    }
+
+    private String sha256(
+            String value
+    ) {
+
+        try {
+
+            MessageDigest digest =
+                    MessageDigest.getInstance(
+                            "SHA-256"
+                    );
+
+            byte[] hash =
+                    digest.digest(
+                            value.getBytes(
+                                    StandardCharsets.UTF_8
+                            )
+                    );
+
+            return HexFormat
+                    .of()
+                    .formatHex(
+                            hash
+                    );
+
+        } catch (NoSuchAlgorithmException exception) {
+
+            throw new IllegalStateException(
+                    "SHA-256 is not available.",
+                    exception
+            );
+        }
     }
 
     private LeadType resolveLeadType(

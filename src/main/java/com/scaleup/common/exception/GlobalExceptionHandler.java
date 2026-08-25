@@ -1,6 +1,8 @@
 package com.scaleup.common.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -27,6 +29,11 @@ public class GlobalExceptionHandler {
                 Map.of()
         );
     }
+
+    private static final Logger log =
+            LoggerFactory.getLogger(
+                    GlobalExceptionHandler.class
+            );
 
     @ExceptionHandler(InvalidRequestException.class)
     public ResponseEntity<ApiErrorResponse> handleInvalidRequest(
@@ -101,6 +108,12 @@ public class GlobalExceptionHandler {
             Exception exception,
             HttpServletRequest request
     ) {
+
+        log.error(
+                "Unexpected error processing request path={}",
+                request.getRequestURI(),
+                exception
+        );
 
         return buildResponse(
                 HttpStatus.INTERNAL_SERVER_ERROR,

@@ -11,12 +11,23 @@ public interface LeadAiTranscriptRepository
         extends JpaRepository<LeadAiTranscript, Long> {
 
     @EntityGraph(attributePaths = "lead")
-    List<LeadAiTranscript> findAllByLeadPublicIdOrderByReceivedAtDesc(
+    List<LeadAiTranscript>
+    findAllByLeadPublicIdOrderByReceivedAtDesc(
             UUID leadPublicId
     );
 
-    Optional<LeadAiTranscript> findFirstByProviderAndExternalCallId(
+    Optional<LeadAiTranscript>
+    findFirstByProviderAndExternalCallId(
             String provider,
             String externalCallId
+    );
+
+    Optional<LeadAiTranscript>
+    findFirstByEventKey(
+            String eventKey
+    );
+
+    boolean existsByEventKey(
+            String eventKey
     );
 }

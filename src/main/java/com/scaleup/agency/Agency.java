@@ -122,12 +122,6 @@ public class Agency {
     }
 
     public void enableHighLevelSync() {
-        if (highLevelLocationId == null) {
-            throw new IllegalStateException(
-                    "HighLevel sync cannot be enabled without a HighLevel location ID."
-            );
-        }
-
         this.highLevelSyncEnabled = true;
     }
 

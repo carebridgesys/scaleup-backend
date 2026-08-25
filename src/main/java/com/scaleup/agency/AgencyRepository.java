@@ -12,15 +12,11 @@ public interface AgencyRepository
 
     Optional<Agency> findBySlug(String slug);
 
-    Optional<Agency> findByHighLevelLocationId(
-            String highLevelLocationId
-    );
+
 
     boolean existsByPublicId(UUID publicId);
 
     boolean existsBySlug(String slug);
 
-    boolean existsByHighLevelLocationId(
-            String highLevelLocationId
-    );
+
 }

@@ -22,11 +22,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -92,36 +88,10 @@ public class HighLevelInternalCrmClient
             Lead lead
     ) {
 
-        String locationId =
+        String rawLocationId =
                 properties
                         .getInternalCrm()
                         .getLocationId();
-
-        String processEnvToken =
-                System.getenv(
-                        "HIGHLEVEL_INTERNAL_CRM_TOKEN"
-                );
-
-        if (processEnvToken == null) {
-
-            System.out.println(
-                    "PROCESS ENV TOKEN = NOT SET"
-            );
-
-        } else {
-
-            String trimmedProcessToken =
-                    processEnvToken.trim();
-
-            System.out.println(
-                    "PROCESS ENV TOKEN: length="
-                            + trimmedProcessToken.length()
-                            + ", fingerprint="
-                            + tokenFingerprint(
-                            trimmedProcessToken
-                    )
-            );
-        }
 
         String token =
                 properties
@@ -139,29 +109,22 @@ public class HighLevelInternalCrmClient
 
         token =
                 token.trim();
-
-        System.out.println(
-                "HighLevel token loaded: length="
-                        + token.length()
-                        + ", fingerprint="
-                        + tokenFingerprint(token)
-                        + ", startsWithBearer="
-                        + token.startsWith("Bearer ")
-        );
-
-        if (
-                locationId == null
-                        || locationId.isBlank()
+        if(
+                rawLocationId == null
+                        || rawLocationId.isBlank()
         ) {
             throw new IllegalStateException(
-                    "HighLevel Internal CRM location ID is not configured."
+                    "HighLevel Internal CRM location ID is not configured"
             );
         }
 
-        if (lead.getLeadType() == null) {
+        final String locationId =
+                rawLocationId.trim();
+
+        if(lead.getLeadType() == null){
             throw new IllegalStateException(
-                    "Lead type is missing for lead "
-                            + lead.getPublicId()
+                    "Lead type is missing for lead"
+                    + lead.getPublicId()
             );
         }
 
@@ -242,6 +205,7 @@ public class HighLevelInternalCrmClient
                 contactResponse == null
                         || contactResponse.contact() == null
                         || contactResponse.contact().id() == null
+                        || contactResponse.contact().id().isBlank()
         ) {
             throw new IllegalStateException(
                     "HighLevel did not return a contact ID."
@@ -251,7 +215,8 @@ public class HighLevelInternalCrmClient
         String contactId =
                 contactResponse
                         .contact()
-                        .id();
+                        .id()
+                        .trim();
 
         String opportunityName =
                 buildOpportunityName(
@@ -286,6 +251,7 @@ public class HighLevelInternalCrmClient
                 opportunityResponse == null
                         || opportunityResponse.opportunity() == null
                         || opportunityResponse.opportunity().id() == null
+                        || opportunityResponse.opportunity().id().isBlank()
         ) {
             throw new IllegalStateException(
                     "HighLevel did not return an opportunity ID."
@@ -297,6 +263,7 @@ public class HighLevelInternalCrmClient
                 opportunityResponse
                         .opportunity()
                         .id()
+                        .trim()
         );
     }
 
@@ -604,12 +571,6 @@ public class HighLevelInternalCrmClient
                 );
 
         if (mapping == null) {
-
-            System.out.println(
-                    "HighLevel custom field mapping not found for fieldKey="
-                            + fieldKey
-            );
-
             return;
         }
 
@@ -755,41 +716,5 @@ public class HighLevelInternalCrmClient
         }
 
         return name.toString();
-    }
-
-    private String tokenFingerprint(
-            String token
-    ) {
-
-        try {
-
-            MessageDigest digest =
-                    MessageDigest.getInstance(
-                            "SHA-256"
-                    );
-
-            byte[] hash =
-                    digest.digest(
-                            token.getBytes(
-                                    StandardCharsets.UTF_8
-                            )
-                    );
-
-            String fullHash =
-                    HexFormat.of()
-                            .formatHex(hash);
-
-            return fullHash.substring(
-                    0,
-                    8
-            );
-
-        } catch (NoSuchAlgorithmException ex) {
-
-            throw new IllegalStateException(
-                    "Unable to calculate token fingerprint.",
-                    ex
-            );
-        }
     }
 }

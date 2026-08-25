@@ -3,13 +3,13 @@ package com.scaleup.integration.agencycrm;
 import com.scaleup.agency.Agency;
 import com.scaleup.integration.highlevel.HighLevelPipelineMapping;
 import com.scaleup.integration.highlevel.HighLevelPipelineMappingRepository;
-import com.scaleup.integration.highlevel.HighLevelProperties;
 import com.scaleup.integration.highlevel.dto.HighLevelContactRequest;
 import com.scaleup.integration.highlevel.dto.HighLevelContactResponse;
 import com.scaleup.integration.highlevel.dto.HighLevelOpportunityRequest;
 import com.scaleup.integration.highlevel.dto.HighLevelOpportunityResponse;
 import com.scaleup.lead.Lead;
 import com.scaleup.lead.LeadType;
+import com.scaleup.security.SecretEncryptionService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -24,25 +24,33 @@ public class HighLevelAgencyCrmClient
     private final RestClient
             highLevelRestClient;
 
-    private final HighLevelProperties
-            highLevelProperties;
-
     private final HighLevelPipelineMappingRepository
             pipelineMappingRepository;
 
+    private final AgencyHighLevelConnectionRepository
+            connectionRepository;
+
+    private final SecretEncryptionService
+            secretEncryptionService;
+
     public HighLevelAgencyCrmClient(
             RestClient highLevelRestClient,
-            HighLevelProperties highLevelProperties,
-            HighLevelPipelineMappingRepository pipelineMappingRepository
+            HighLevelPipelineMappingRepository pipelineMappingRepository,
+            AgencyHighLevelConnectionRepository connectionRepository,
+            SecretEncryptionService secretEncryptionService
     ) {
+
         this.highLevelRestClient =
                 highLevelRestClient;
 
-        this.highLevelProperties =
-                highLevelProperties;
-
         this.pipelineMappingRepository =
                 pipelineMappingRepository;
+
+        this.connectionRepository =
+                connectionRepository;
+
+        this.secretEncryptionService =
+                secretEncryptionService;
     }
 
     @Override
@@ -61,32 +69,46 @@ public class HighLevelAgencyCrmClient
                 agency
         );
 
+        AgencyHighLevelConnection connection =
+                connectionRepository
+                        .findByAgencyPublicId(
+                                agency.getPublicId()
+                        )
+                        .orElseThrow(() ->
+                                new IllegalStateException(
+                                        "HighLevel connection was not found for agency."
+                                )
+                        );
+
+        if (
+                connection.getConnectionStatus()
+                        != AgencyCrmConnectionStatus.ACTIVE
+        ) {
+
+            throw new IllegalStateException(
+                    "HighLevel connection is not active for agency."
+            );
+        }
+
         String locationId =
                 normalizeRequired(
-                        agency.getHighLevelLocationId(),
-                        "HighLevel location ID is missing for agency "
-                                + agency.getSlug()
+                        connection.getLocationId(),
+                        "HighLevel location ID is missing."
                 );
 
         String token =
-                resolveAgencyToken(
-                        agency
+                secretEncryptionService
+                        .decrypt(
+                                connection
+                                        .getAccessTokenEncrypted()
+                        );
+
+        token =
+                normalizeRequired(
+                        token,
+                        "HighLevel access token is missing."
                 );
 
-        /*
-         * Load the pipeline dynamically using:
-         *
-         * location_id + lead_type
-         *
-         * Example for XYZ:
-         *
-         * rpelZN1piHfi4cRKl2VP
-         * +
-         * CLIENT
-         *
-         * → Client Acquisition
-         * → New Lead
-         */
         HighLevelPipelineMapping pipeline =
                 pipelineMappingRepository
                         .findByLocationIdAndLeadTypeAndActiveTrue(
@@ -103,24 +125,13 @@ public class HighLevelAgencyCrmClient
                                 )
                         );
 
-        /*
-         * Step 1:
-         * Create or update the contact
-         * inside the destination agency sub-account.
-         */
         String contactId =
                 createOrUpdateContact(
                         lead,
-                        agency,
                         locationId,
                         token
                 );
 
-        /*
-         * Step 2:
-         * Create/update the agency opportunity
-         * using the agency-specific pipeline mapping.
-         */
         String opportunityId =
                 createOrUpdateOpportunity(
                         lead,
@@ -138,7 +149,6 @@ public class HighLevelAgencyCrmClient
 
     private String createOrUpdateContact(
             Lead lead,
-            Agency agency,
             String locationId,
             String token
     ) {
@@ -157,18 +167,6 @@ public class HighLevelAgencyCrmClient
                         lead.getPhone(),
                         lead.getSource(),
                         tags,
-
-                        /*
-                         * Do NOT send Internal CRM
-                         * custom-field IDs here.
-                         *
-                         * HighLevel custom fields are
-                         * location-specific.
-                         *
-                         * Agency-specific fields can be
-                         * added later using mappings for
-                         * this agency location.
-                         */
                         List.of()
                 );
 
@@ -196,9 +194,9 @@ public class HighLevelAgencyCrmClient
                         || response.contact().id() == null
                         || response.contact().id().isBlank()
         ) {
+
             throw new IllegalStateException(
-                    "HighLevel did not return a contact ID for agency "
-                            + agency.getSlug()
+                    "HighLevel did not return a contact ID."
             );
         }
 
@@ -255,10 +253,9 @@ public class HighLevelAgencyCrmClient
                         || response.opportunity().id() == null
                         || response.opportunity().id().isBlank()
         ) {
+
             throw new IllegalStateException(
-                    "HighLevel did not return an opportunity ID"
-                            + " for lead "
-                            + lead.getPublicId()
+                    "HighLevel did not return an opportunity ID."
             );
         }
 
@@ -268,44 +265,21 @@ public class HighLevelAgencyCrmClient
                 .trim();
     }
 
-    private String resolveAgencyToken(
-            Agency agency
-    ) {
-
-        HighLevelProperties.AgencyCrm configuration =
-                highLevelProperties
-                        .getAgencyConfiguration(
-                                agency.getSlug()
-                        );
-
-        if (configuration == null) {
-            throw new IllegalStateException(
-                    "HighLevel credential configuration was not found for agency: "
-                            + agency.getSlug()
-            );
-        }
-
-        return normalizeRequired(
-                configuration.getToken(),
-                "HighLevel token is missing for agency "
-                        + agency.getSlug()
-        );
-    }
-
     private void validateLead(
             Lead lead
     ) {
 
         if (lead == null) {
+
             throw new IllegalArgumentException(
                     "Lead must not be null."
             );
         }
 
         if (lead.getLeadType() == null) {
+
             throw new IllegalStateException(
-                    "Lead type is missing for lead "
-                            + lead.getPublicId()
+                    "Lead type is missing."
             );
         }
     }
@@ -315,34 +289,23 @@ public class HighLevelAgencyCrmClient
     ) {
 
         if (agency == null) {
+
             throw new IllegalStateException(
                     "Lead does not have an agency."
             );
         }
 
         if (!agency.isActive()) {
+
             throw new IllegalStateException(
-                    "Agency is not active: "
-                            + agency.getSlug()
+                    "Agency is not active."
             );
         }
 
         if (!agency.isHighLevelSyncEnabled()) {
-            throw new IllegalStateException(
-                    "HighLevel synchronization is disabled for agency: "
-                            + agency.getSlug()
-            );
-        }
 
-        if (
-                agency.getHighLevelLocationId() == null
-                        || agency
-                        .getHighLevelLocationId()
-                        .isBlank()
-        ) {
             throw new IllegalStateException(
-                    "HighLevel location ID is missing for agency: "
-                            + agency.getSlug()
+                    "HighLevel synchronization is disabled for agency."
             );
         }
     }
@@ -373,6 +336,7 @@ public class HighLevelAgencyCrmClient
                     );
 
             if (!normalizedAgency.isBlank()) {
+
                 tags.add(
                         "agency-"
                                 + normalizedAgency
@@ -414,6 +378,7 @@ public class HighLevelAgencyCrmClient
                         && !lead.getFirstName()
                         .isBlank()
         ) {
+
             name.append(
                     lead.getFirstName()
                             .trim()
@@ -456,6 +421,7 @@ public class HighLevelAgencyCrmClient
         }
 
         if (name.isEmpty()) {
+
             return "CareProspect Lead";
         }
 
@@ -495,6 +461,7 @@ public class HighLevelAgencyCrmClient
                 value == null
                         || value.isBlank()
         ) {
+
             throw new IllegalStateException(
                     errorMessage
             );

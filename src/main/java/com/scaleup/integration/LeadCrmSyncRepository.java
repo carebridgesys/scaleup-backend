@@ -6,6 +6,8 @@ import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -68,5 +70,19 @@ public interface LeadCrmSyncRepository
             int maxAttempts,
 
             Pageable pageable
+    );
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+        select s
+        from LeadCrmSync s
+        where s.lead.publicId = :leadPublicId
+          and s.destination = :destination
+        """)
+    Optional<LeadCrmSync> findForUpdate(
+            @Param("leadPublicId")
+            UUID leadPublicId,
+
+            @Param("destination")
+            CrmDestination destination
     );
 }
