@@ -20,6 +20,7 @@ import com.scaleup.lead.LeadRepository;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.scaleup.integration.internalcrm.InternalCrmStageRefreshRequestedEvent;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -129,7 +130,11 @@ public class AiQualificationService {
                 .saveAndFlush(
                         agencyCrmSync
                 );
-
+        eventPublisher.publishEvent(
+                new InternalCrmStageRefreshRequestedEvent(
+                        lead.getPublicId()
+                )
+        );
         /*
          * Publish inside the transaction.
          *

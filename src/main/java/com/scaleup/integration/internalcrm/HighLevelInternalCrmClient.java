@@ -137,14 +137,24 @@ public class HighLevelInternalCrmClient
 
         HighLevelPipelineMapping pipeline =
                 pipelineMappingRepository
-                        .findByLocationIdAndLeadTypeAndActiveTrue(
+                        .findByAgencyPublicIdAndLocationIdAndLeadTypeAndActiveTrue(
+                                lead.getAgency().getPublicId(),
                                 locationId,
                                 lead.getLeadType()
+                        )
+                        .or(() ->
+                                pipelineMappingRepository
+                                        .findByAgencyIsNullAndLocationIdAndLeadTypeAndActiveTrue(
+                                                locationId,
+                                                lead.getLeadType()
+                                        )
                         )
                         .orElseThrow(() ->
                                 new IllegalStateException(
                                         "HighLevel pipeline mapping was not found"
-                                                + " for locationId="
+                                                + " for agency="
+                                                + lead.getAgency().getPublicId()
+                                                + ", locationId="
                                                 + locationId
                                                 + ", leadType="
                                                 + lead.getLeadType()

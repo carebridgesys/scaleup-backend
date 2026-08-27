@@ -9,6 +9,8 @@ import com.scaleup.integration.CrmSyncStateService;
 import com.scaleup.lead.Lead;
 import com.scaleup.lead.LeadRepository;
 import org.springframework.stereotype.Service;
+import com.scaleup.integration.internalcrm.InternalCrmStageRefreshRequestedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -28,11 +30,15 @@ public class AgencyCrmSyncService {
     private final CrmSyncFailureClassifier
             failureClassifier;
 
+    private final ApplicationEventPublisher
+            eventPublisher;
+
     public AgencyCrmSyncService(
             LeadRepository leadRepository,
             AgencyCrmClient agencyCrmClient,
             CrmSyncStateService crmSyncStateService,
-            CrmSyncFailureClassifier failureClassifier
+            CrmSyncFailureClassifier failureClassifier,
+            ApplicationEventPublisher eventPublisher
     ) {
 
         this.leadRepository =
@@ -46,6 +52,10 @@ public class AgencyCrmSyncService {
 
         this.failureClassifier =
                 failureClassifier;
+
+
+        this.eventPublisher =
+                eventPublisher;
     }
 
     public void syncLead(
@@ -97,6 +107,11 @@ public class AgencyCrmSyncService {
                             result.externalContactId(),
                             result.externalOpportunityId()
                     );
+            eventPublisher.publishEvent(
+                    new InternalCrmStageRefreshRequestedEvent(
+                            leadPublicId
+                    )
+            );
 
         } catch (RuntimeException exception) {
 

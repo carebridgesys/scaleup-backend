@@ -111,14 +111,24 @@ public class HighLevelAgencyCrmClient
 
         HighLevelPipelineMapping pipeline =
                 pipelineMappingRepository
-                        .findByLocationIdAndLeadTypeAndActiveTrue(
+                        .findByAgencyPublicIdAndLocationIdAndLeadTypeAndActiveTrue(
+                                agency.getPublicId(),
                                 locationId,
                                 lead.getLeadType()
+                        )
+                        .or(() ->
+                                pipelineMappingRepository
+                                        .findByAgencyIsNullAndLocationIdAndLeadTypeAndActiveTrue(
+                                                locationId,
+                                                lead.getLeadType()
+                                        )
                         )
                         .orElseThrow(() ->
                                 new IllegalStateException(
                                         "HighLevel agency pipeline mapping was not found"
-                                                + " for locationId="
+                                                + " for agency="
+                                                + agency.getPublicId()
+                                                + ", locationId="
                                                 + locationId
                                                 + ", leadType="
                                                 + lead.getLeadType()

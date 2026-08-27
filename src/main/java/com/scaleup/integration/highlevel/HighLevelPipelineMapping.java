@@ -1,38 +1,23 @@
 package com.scaleup.integration.highlevel;
 
+import com.scaleup.agency.Agency;
 import com.scaleup.lead.LeadType;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
-import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
+import java.util.Objects;
 
 @Entity
-@Table(
-        name = "highlevel_pipeline_mapping",
-        uniqueConstraints = {
-                @UniqueConstraint(
-                        name = "uq_highlevel_pipeline_mapping",
-                        columnNames = {
-                                "location_id",
-                                "lead_type"
-                        }
-                )
-        }
-)
+@Table(name = "highlevel_pipeline_mapping")
 public class HighLevelPipelineMapping {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "agency_id")
+    private Agency agency;
 
     @Column(
             name = "location_id",
@@ -62,6 +47,30 @@ public class HighLevelPipelineMapping {
             length = 150
     )
     private String initialStageId;
+
+    @Column(
+            name = "attempting_contact_stage_id",
+            length = 150
+    )
+    private String attemptingContactStageId;
+
+    @Column(
+            name = "contacted_stage_id",
+            length = 150
+    )
+    private String contactedStageId;
+
+    @Column(
+            name = "qualified_stage_id",
+            length = 150
+    )
+    private String qualifiedStageId;
+
+    @Column(
+            name = "routed_stage_id",
+            length = 150
+    )
+    private String routedStageId;
 
     @Column(
             name = "pipeline_name",
@@ -98,20 +107,176 @@ public class HighLevelPipelineMapping {
         // Required by JPA.
     }
 
+    public HighLevelPipelineMapping(
+            Agency agency,
+            String locationId,
+            LeadType leadType,
+            String pipelineId,
+            String initialStageId,
+            String pipelineName,
+            String initialStageName
+    ) {
+
+        this.agency = agency;
+
+        this.locationId =
+                requireText(
+                        locationId,
+                        "HighLevel location ID"
+                );
+
+        this.leadType =
+                Objects.requireNonNull(
+                        leadType,
+                        "Lead type must not be null."
+                );
+
+        this.pipelineId =
+                requireText(
+                        pipelineId,
+                        "Pipeline ID"
+                );
+
+        this.initialStageId =
+                requireText(
+                        initialStageId,
+                        "Initial stage ID"
+                );
+
+        this.pipelineName =
+                normalizeNullableText(
+                        pipelineName
+                );
+
+        this.initialStageName =
+                normalizeNullableText(
+                        initialStageName
+                );
+
+        this.active = true;
+    }
+
+    public void updateMapping(
+            String pipelineId,
+            String initialStageId,
+            String pipelineName,
+            String initialStageName
+    ) {
+
+        this.pipelineId =
+                requireText(
+                        pipelineId,
+                        "Pipeline ID"
+                );
+
+        this.initialStageId =
+                requireText(
+                        initialStageId,
+                        "Initial stage ID"
+                );
+
+        this.pipelineName =
+                normalizeNullableText(
+                        pipelineName
+                );
+
+        this.initialStageName =
+                normalizeNullableText(
+                        initialStageName
+                );
+
+        this.active = true;
+    }
+
+    public void updateLifecycleStages(
+            String attemptingContactStageId,
+            String contactedStageId,
+            String qualifiedStageId,
+            String routedStageId
+    ) {
+
+        this.attemptingContactStageId =
+                normalizeNullableText(
+                        attemptingContactStageId
+                );
+
+        this.contactedStageId =
+                normalizeNullableText(
+                        contactedStageId
+                );
+
+        this.qualifiedStageId =
+                normalizeNullableText(
+                        qualifiedStageId
+                );
+
+        this.routedStageId =
+                normalizeNullableText(
+                        routedStageId
+                );
+    }
+
+    public void activate() {
+        this.active = true;
+    }
+
+    public void deactivate() {
+        this.active = false;
+    }
+
     @PrePersist
     protected void onCreate() {
-        LocalDateTime now = LocalDateTime.now();
+
+        LocalDateTime now =
+                LocalDateTime.now();
+
         createdAt = now;
         updatedAt = now;
     }
 
     @PreUpdate
     protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
+        updatedAt =
+                LocalDateTime.now();
+    }
+
+    private static String requireText(
+            String value,
+            String fieldName
+    ) {
+
+        if (
+                value == null
+                        || value.isBlank()
+        ) {
+            throw new IllegalArgumentException(
+                    fieldName + " must not be blank."
+            );
+        }
+
+        return value.trim();
+    }
+
+    private static String normalizeNullableText(
+            String value
+    ) {
+
+        if (
+                value == null
+                        || value.isBlank()
+        ) {
+            return null;
+        }
+
+        return value.trim();
     }
 
     public Long getId() {
         return id;
+    }
+
+    public Agency getAgency() {
+        return agency;
     }
 
     public String getLocationId() {
@@ -128,6 +293,22 @@ public class HighLevelPipelineMapping {
 
     public String getInitialStageId() {
         return initialStageId;
+    }
+
+    public String getAttemptingContactStageId() {
+        return attemptingContactStageId;
+    }
+
+    public String getContactedStageId() {
+        return contactedStageId;
+    }
+
+    public String getQualifiedStageId() {
+        return qualifiedStageId;
+    }
+
+    public String getRoutedStageId() {
+        return routedStageId;
     }
 
     public String getPipelineName() {

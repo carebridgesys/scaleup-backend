@@ -6,10 +6,14 @@ import com.scaleup.integration.CrmDestination;
 import com.scaleup.integration.CrmSyncStatus;
 import com.scaleup.integration.LeadCrmSync;
 import com.scaleup.integration.LeadCrmSyncRepository;
+import com.scaleup.integration.internalcrm.InternalCrmStageRefreshRequestedEvent;
 import com.scaleup.lead.Lead;
 import com.scaleup.lead.LeadRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.scaleup.integration.internalcrm.InternalCrmOpportunityStage;
+import com.scaleup.integration.internalcrm.InternalCrmStageChangeRequestedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.UUID;
 
@@ -25,11 +29,16 @@ public class AiContactLifecycleService {
     private final LeadAiContactRepository
             leadAiContactRepository;
 
+    private final ApplicationEventPublisher
+            eventPublisher;
+
     public AiContactLifecycleService(
             LeadRepository leadRepository,
             LeadCrmSyncRepository leadCrmSyncRepository,
-            LeadAiContactRepository leadAiContactRepository
-    ) {
+            LeadAiContactRepository leadAiContactRepository,
+            ApplicationEventPublisher eventPublisher
+    )
+            {
         this.leadRepository =
                 leadRepository;
 
@@ -38,6 +47,9 @@ public class AiContactLifecycleService {
 
         this.leadAiContactRepository =
                 leadAiContactRepository;
+
+                this.eventPublisher =
+                        eventPublisher;
     }
 
     @Transactional
@@ -114,8 +126,19 @@ public class AiContactLifecycleService {
                 externalCallId
         );
 
-        return leadAiContactRepository
-                .saveAndFlush(contact);
+        LeadAiContact savedContact =
+                leadAiContactRepository
+                        .saveAndFlush(
+                                contact
+                        );
+
+        eventPublisher.publishEvent(
+                new InternalCrmStageRefreshRequestedEvent(
+                        leadId
+                )
+        );
+
+        return savedContact;
     }
 
     @Transactional
@@ -133,8 +156,19 @@ public class AiContactLifecycleService {
                 transcriptReference
         );
 
-        return leadAiContactRepository
-                .saveAndFlush(contact);
+        LeadAiContact savedContact =
+                leadAiContactRepository
+                        .saveAndFlush(
+                                contact
+                        );
+
+        eventPublisher.publishEvent(
+                new InternalCrmStageRefreshRequestedEvent(
+                        leadId
+                )
+        );
+
+        return savedContact;
     }
 
     @Transactional
