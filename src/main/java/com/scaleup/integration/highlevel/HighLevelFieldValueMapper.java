@@ -188,6 +188,9 @@ public class HighLevelFieldValueMapper {
             case "WEBSITE" ->
                     "Website";
 
+            case "LANDING_PAGE" ->
+                    "Website";
+
             case "OTHER" ->
                     "Other";
 
