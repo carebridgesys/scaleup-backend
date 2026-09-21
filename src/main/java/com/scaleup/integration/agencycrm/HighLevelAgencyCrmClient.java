@@ -31,6 +31,9 @@ public class HighLevelAgencyCrmClient
     /*
      * Shared destination custom fields.
      */
+    private static final String FIELD_LEAD_TYPE =
+            "contact.lead_type";
+
     private static final String FIELD_PREFERRED_CONTACT_METHOD =
             "contact.preferred_contact_method";
 
@@ -39,9 +42,6 @@ public class HighLevelAgencyCrmClient
 
     private static final String FIELD_CAMPAIGN_NAME =
             "contact.campaign_name";
-
-    private static final String FIELD_ZIP_CODE =
-            "contact.zip_code";
 
     /*
      * Client destination custom fields.
@@ -202,12 +202,6 @@ public class HighLevelAgencyCrmClient
                         "HighLevel access token is missing."
                 );
 
-        /*
-         * Keep agency + lead-type-specific pipeline routing.
-         *
-         * Agency-specific mappings take precedence.
-         * Global mappings remain available as fallback.
-         */
         HighLevelPipelineMapping pipeline =
                 pipelineMappingRepository
                         .findByAgencyPublicIdAndLocationIdAndLeadTypeAndActiveTrue(
@@ -280,6 +274,12 @@ public class HighLevelAgencyCrmClient
                         lead.getLastName(),
                         lead.getEmail(),
                         lead.getPhone(),
+
+                        /*
+                         * Native HighLevel postal-code field.
+                         */
+                        lead.getZipCode(),
+
                         lead.getSource(),
                         tags,
                         customFields
@@ -329,18 +329,12 @@ public class HighLevelAgencyCrmClient
         List<HighLevelCustomFieldValue> fields =
                 new ArrayList<>();
 
-        /*
-         * Fields shared by both CLIENT and CAREGIVER leads.
-         */
         addSharedCustomFields(
                 fields,
                 lead,
                 locationId
         );
 
-        /*
-         * Lead-type-specific fields.
-         */
         if (lead.getLeadType() == LeadType.CLIENT) {
 
             addClientCustomFields(
@@ -370,11 +364,17 @@ public class HighLevelAgencyCrmClient
             String locationId
     ) {
 
+        /*
+         * Lead Type powers separate HighLevel Smart Lists:
+         *
+         * CLIENT
+         * CAREGIVER
+         */
         addCustomField(
                 fields,
                 locationId,
-                FIELD_ZIP_CODE,
-                lead.getZipCode()
+                FIELD_LEAD_TYPE,
+                lead.getLeadType().name()
         );
 
         addCustomField(
@@ -569,10 +569,6 @@ public class HighLevelAgencyCrmClient
                         )
                         .orElse(null);
 
-        /*
-         * Optional custom-field mappings must not prevent
-         * the contact/opportunity from reaching the agency.
-         */
         if (mapping == null) {
             return;
         }

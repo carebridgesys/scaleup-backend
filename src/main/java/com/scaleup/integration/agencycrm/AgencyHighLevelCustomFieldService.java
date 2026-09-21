@@ -126,9 +126,6 @@ public class AgencyHighLevelCustomFieldService {
                         "HighLevel access token is missing."
                 );
 
-        /*
-         * Fetch the agency's current HighLevel contact fields.
-         */
         HighLevelCustomFieldsResponse response =
                 highLevelRestClient
                         .get()
@@ -216,11 +213,6 @@ public class AgencyHighLevelCustomFieldService {
                             )
                             .orElse(null);
 
-            /*
-             * A mapping may already exist but currently be inactive.
-             * Reuse it instead of violating the database uniqueness
-             * constraint by inserting another row.
-             */
             if (mapping == null) {
 
                 mapping =
@@ -352,6 +344,32 @@ public class AgencyHighLevelCustomFieldService {
         Map<String, String> fields =
                 new LinkedHashMap<>();
 
+        /*
+         * Shared CareScale contact classification.
+         */
+        fields.put(
+                "contact.lead_type",
+                "Lead Type"
+        );
+
+        fields.put(
+                "contact.preferred_contact_method",
+                "Preferred Contact Method"
+        );
+
+        fields.put(
+                "contact.lead_source",
+                "Lead Source"
+        );
+
+        fields.put(
+                "contact.campaign_name",
+                "Campaign Name"
+        );
+
+        /*
+         * Client-specific fields.
+         */
         fields.put(
                 "contact.service_needed",
                 "Service Needed"
@@ -373,21 +391,6 @@ public class AgencyHighLevelCustomFieldService {
         );
 
         fields.put(
-                "contact.preferred_contact_method",
-                "Preferred Contact Method"
-        );
-
-        fields.put(
-                "contact.lead_source",
-                "Lead Source"
-        );
-
-        fields.put(
-                "contact.campaign_name",
-                "Campaign Name"
-        );
-
-        fields.put(
                 "contact.ai_qualification_score",
                 "AI Qualification Score"
         );
@@ -395,11 +398,6 @@ public class AgencyHighLevelCustomFieldService {
         fields.put(
                 "contact.ai_summary",
                 "AI Summary"
-        );
-
-        fields.put(
-                "contact.zip_code",
-                "Zip Code"
         );
 
         return Map.copyOf(
@@ -414,8 +412,13 @@ public class AgencyHighLevelCustomFieldService {
                 new LinkedHashMap<>();
 
         /*
-         * Shared lead attribution fields.
+         * Shared CareScale contact fields.
          */
+        fields.put(
+                "contact.lead_type",
+                "Lead Type"
+        );
+
         fields.put(
                 "contact.preferred_contact_method",
                 "Preferred Contact Method"
@@ -429,11 +432,6 @@ public class AgencyHighLevelCustomFieldService {
         fields.put(
                 "contact.campaign_name",
                 "Campaign Name"
-        );
-
-        fields.put(
-                "contact.zip_code",
-                "Zip Code"
         );
 
         /*

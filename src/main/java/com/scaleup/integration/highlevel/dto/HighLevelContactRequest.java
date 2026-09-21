@@ -9,6 +9,13 @@ public record HighLevelContactRequest(
         String lastName,
         String email,
         String phone,
+
+        /*
+         * Native HighLevel contact postal-code field.
+         * Do not duplicate ZIP as a custom field.
+         */
+        String postalCode,
+
         String source,
 
         List<String> tags,

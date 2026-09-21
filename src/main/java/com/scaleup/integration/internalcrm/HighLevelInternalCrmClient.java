@@ -185,13 +185,19 @@ public class HighLevelInternalCrmClient
                         lead
                 );
 
-        HighLevelContactRequest contactRequest =
+        HighLevelContactRequest request =
                 new HighLevelContactRequest(
                         locationId,
                         lead.getFirstName(),
                         lead.getLastName(),
                         lead.getEmail(),
                         lead.getPhone(),
+
+                        /*
+                         * Native HighLevel postal-code field.
+                         */
+                        lead.getZipCode(),
+
                         lead.getSource(),
                         tags,
                         customFields
@@ -205,7 +211,7 @@ public class HighLevelInternalCrmClient
                                 HttpHeaders.AUTHORIZATION,
                                 "Bearer " + token
                         )
-                        .body(contactRequest)
+                        .body(request)
                         .retrieve()
                         .body(
                                 HighLevelContactResponse.class
