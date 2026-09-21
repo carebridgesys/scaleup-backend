@@ -1,10 +1,10 @@
 package com.scaleup.integration.agencycrm;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.bind.annotation.PathVariable;
 
 import java.util.UUID;
 
@@ -22,6 +22,11 @@ public class AgencyHighLevelCustomFieldController {
                 customFieldService;
     }
 
+    /*
+     * Existing CLIENT custom-field synchronization endpoint.
+     *
+     * Keep this route unchanged for backward compatibility.
+     */
     @PostMapping(
             "/{agencyPublicId}/highlevel-custom-fields/sync"
     )
@@ -35,6 +40,30 @@ public class AgencyHighLevelCustomFieldController {
         AgencyHighLevelCustomFieldService.CustomFieldSyncResult result =
                 customFieldService
                         .syncClientFields(
+                                agencyPublicId
+                        );
+
+        return ResponseEntity.ok(
+                result
+        );
+    }
+
+    /*
+     * CAREGIVER custom-field synchronization endpoint.
+     */
+    @PostMapping(
+            "/{agencyPublicId}/highlevel-custom-fields/caregiver/sync"
+    )
+    public ResponseEntity<
+            AgencyHighLevelCustomFieldService.CustomFieldSyncResult
+            >
+    syncCaregiverCustomFields(
+            @PathVariable UUID agencyPublicId
+    ) {
+
+        AgencyHighLevelCustomFieldService.CustomFieldSyncResult result =
+                customFieldService
+                        .syncCaregiverFields(
                                 agencyPublicId
                         );
 

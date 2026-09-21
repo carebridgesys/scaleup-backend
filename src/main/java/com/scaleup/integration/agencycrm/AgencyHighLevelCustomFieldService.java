@@ -22,6 +22,9 @@ public class AgencyHighLevelCustomFieldService {
     private static final Map<String, String> CLIENT_FIELD_KEYS =
             createClientFieldKeys();
 
+    private static final Map<String, String> CAREGIVER_FIELD_KEYS =
+            createCaregiverFieldKeys();
+
     private final AgencyRepository agencyRepository;
 
     private final AgencyHighLevelConnectionRepository
@@ -56,6 +59,28 @@ public class AgencyHighLevelCustomFieldService {
     @Transactional
     public CustomFieldSyncResult syncClientFields(
             UUID agencyPublicId
+    ) {
+
+        return syncFields(
+                agencyPublicId,
+                CLIENT_FIELD_KEYS
+        );
+    }
+
+    @Transactional
+    public CustomFieldSyncResult syncCaregiverFields(
+            UUID agencyPublicId
+    ) {
+
+        return syncFields(
+                agencyPublicId,
+                CAREGIVER_FIELD_KEYS
+        );
+    }
+
+    private CustomFieldSyncResult syncFields(
+            UUID agencyPublicId,
+            Map<String, String> expectedFields
     ) {
 
         Agency agency =
@@ -102,7 +127,7 @@ public class AgencyHighLevelCustomFieldService {
                 );
 
         /*
-         * External HTTP call happens before we modify mappings.
+         * Fetch the agency's current HighLevel contact fields.
          */
         HighLevelCustomFieldsResponse response =
                 highLevelRestClient
@@ -150,7 +175,7 @@ public class AgencyHighLevelCustomFieldService {
 
         for (
                 Map.Entry<String, String> expected :
-                CLIENT_FIELD_KEYS.entrySet()
+                expectedFields.entrySet()
         ) {
 
             String logicalFieldKey =
@@ -191,13 +216,13 @@ public class AgencyHighLevelCustomFieldService {
                             )
                             .orElse(null);
 
+            /*
+             * A mapping may already exist but currently be inactive.
+             * Reuse it instead of violating the database uniqueness
+             * constraint by inserting another row.
+             */
             if (mapping == null) {
 
-                /*
-                 * A mapping may exist but currently be inactive.
-                 * The repository's uniqueness constraint prevents us
-                 * from blindly inserting another row.
-                 */
                 mapping =
                         customFieldMappingRepository
                                 .findAll()
@@ -375,6 +400,88 @@ public class AgencyHighLevelCustomFieldService {
         fields.put(
                 "contact.zip_code",
                 "Zip Code"
+        );
+
+        return Map.copyOf(
+                fields
+        );
+    }
+
+    private static Map<String, String>
+    createCaregiverFieldKeys() {
+
+        Map<String, String> fields =
+                new LinkedHashMap<>();
+
+        /*
+         * Shared lead attribution fields.
+         */
+        fields.put(
+                "contact.preferred_contact_method",
+                "Preferred Contact Method"
+        );
+
+        fields.put(
+                "contact.lead_source",
+                "Lead Source"
+        );
+
+        fields.put(
+                "contact.campaign_name",
+                "Campaign Name"
+        );
+
+        fields.put(
+                "contact.zip_code",
+                "Zip Code"
+        );
+
+        /*
+         * Caregiver-specific fields.
+         */
+        fields.put(
+                "contact.years_experience",
+                "Years Experience"
+        );
+
+        fields.put(
+                "contact.certifications",
+                "Certifications"
+        );
+
+        fields.put(
+                "contact.availability",
+                "Availability"
+        );
+
+        fields.put(
+                "contact.transportation",
+                "Transportation"
+        );
+
+        fields.put(
+                "contact.preferred_schedule",
+                "Preferred Schedule"
+        );
+
+        fields.put(
+                "contact.desired_hours_per_week",
+                "Desired Hours Per Week"
+        );
+
+        fields.put(
+                "contact.service_area",
+                "Service Area"
+        );
+
+        fields.put(
+                "contact.ai_screening_score",
+                "AI Screening Score"
+        );
+
+        fields.put(
+                "contact.ai_screening_summary",
+                "AI Screening Summary"
         );
 
         return Map.copyOf(

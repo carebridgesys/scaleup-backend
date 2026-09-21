@@ -1,6 +1,8 @@
 package com.scaleup.integration.agencycrm;
 
 import com.scaleup.agency.Agency;
+import com.scaleup.caregiverlead.CaregiverLeadDetails;
+import com.scaleup.caregiverlead.CaregiverLeadDetailsRepository;
 import com.scaleup.clientlead.ClientLeadDetails;
 import com.scaleup.clientlead.ClientLeadDetailsRepository;
 import com.scaleup.integration.highlevel.HighLevelCustomFieldMapping;
@@ -26,6 +28,24 @@ import java.util.List;
 public class HighLevelAgencyCrmClient
         implements AgencyCrmClient {
 
+    /*
+     * Shared destination custom fields.
+     */
+    private static final String FIELD_PREFERRED_CONTACT_METHOD =
+            "contact.preferred_contact_method";
+
+    private static final String FIELD_LEAD_SOURCE =
+            "contact.lead_source";
+
+    private static final String FIELD_CAMPAIGN_NAME =
+            "contact.campaign_name";
+
+    private static final String FIELD_ZIP_CODE =
+            "contact.zip_code";
+
+    /*
+     * Client destination custom fields.
+     */
     private static final String FIELD_SERVICE_NEEDED =
             "contact.service_needed";
 
@@ -38,23 +58,41 @@ public class HighLevelAgencyCrmClient
     private static final String FIELD_DECISION_MAKER =
             "contact.decision_maker";
 
-    private static final String FIELD_PREFERRED_CONTACT_METHOD =
-            "contact.preferred_contact_method";
-
-    private static final String FIELD_LEAD_SOURCE =
-            "contact.lead_source";
-
-    private static final String FIELD_CAMPAIGN_NAME =
-            "contact.campaign_name";
-
     private static final String FIELD_AI_QUALIFICATION_SCORE =
             "contact.ai_qualification_score";
 
     private static final String FIELD_AI_SUMMARY =
             "contact.ai_summary";
 
-    private static final String FIELD_ZIP_CODE =
-            "contact.zip_code";
+    /*
+     * Caregiver destination custom fields.
+     */
+    private static final String FIELD_YEARS_EXPERIENCE =
+            "contact.years_experience";
+
+    private static final String FIELD_CERTIFICATIONS =
+            "contact.certifications";
+
+    private static final String FIELD_AVAILABILITY =
+            "contact.availability";
+
+    private static final String FIELD_TRANSPORTATION =
+            "contact.transportation";
+
+    private static final String FIELD_PREFERRED_SCHEDULE =
+            "contact.preferred_schedule";
+
+    private static final String FIELD_DESIRED_HOURS_PER_WEEK =
+            "contact.desired_hours_per_week";
+
+    private static final String FIELD_SERVICE_AREA =
+            "contact.service_area";
+
+    private static final String FIELD_AI_SCREENING_SCORE =
+            "contact.ai_screening_score";
+
+    private static final String FIELD_AI_SCREENING_SUMMARY =
+            "contact.ai_screening_summary";
 
     private final RestClient highLevelRestClient;
 
@@ -70,6 +108,9 @@ public class HighLevelAgencyCrmClient
     private final ClientLeadDetailsRepository
             clientLeadDetailsRepository;
 
+    private final CaregiverLeadDetailsRepository
+            caregiverLeadDetailsRepository;
+
     private final SecretEncryptionService
             secretEncryptionService;
 
@@ -79,6 +120,7 @@ public class HighLevelAgencyCrmClient
             AgencyHighLevelConnectionRepository connectionRepository,
             HighLevelCustomFieldMappingRepository customFieldMappingRepository,
             ClientLeadDetailsRepository clientLeadDetailsRepository,
+            CaregiverLeadDetailsRepository caregiverLeadDetailsRepository,
             SecretEncryptionService secretEncryptionService
     ) {
 
@@ -96,6 +138,9 @@ public class HighLevelAgencyCrmClient
 
         this.clientLeadDetailsRepository =
                 clientLeadDetailsRepository;
+
+        this.caregiverLeadDetailsRepository =
+                caregiverLeadDetailsRepository;
 
         this.secretEncryptionService =
                 secretEncryptionService;
@@ -157,6 +202,12 @@ public class HighLevelAgencyCrmClient
                         "HighLevel access token is missing."
                 );
 
+        /*
+         * Keep agency + lead-type-specific pipeline routing.
+         *
+         * Agency-specific mappings take precedence.
+         * Global mappings remain available as fallback.
+         */
         HighLevelPipelineMapping pipeline =
                 pipelineMappingRepository
                         .findByAgencyPublicIdAndLocationIdAndLeadTypeAndActiveTrue(
@@ -279,19 +330,46 @@ public class HighLevelAgencyCrmClient
                 new ArrayList<>();
 
         /*
-         * Agency destination custom-field handoff is currently
-         * implemented for CLIENT leads.
-         *
-         * CAREGIVER fields will be added after caregiver destination
-         * custom fields are configured and synchronized.
+         * Fields shared by both CLIENT and CAREGIVER leads.
          */
-        if (lead.getLeadType() != LeadType.CLIENT) {
-            return fields;
-        }
+        addSharedCustomFields(
+                fields,
+                lead,
+                locationId
+        );
 
         /*
-         * Values available directly from the base Lead.
+         * Lead-type-specific fields.
          */
+        if (lead.getLeadType() == LeadType.CLIENT) {
+
+            addClientCustomFields(
+                    fields,
+                    lead,
+                    locationId
+            );
+
+        } else if (
+                lead.getLeadType()
+                        == LeadType.CAREGIVER
+        ) {
+
+            addCaregiverCustomFields(
+                    fields,
+                    lead,
+                    locationId
+            );
+        }
+
+        return fields;
+    }
+
+    private void addSharedCustomFields(
+            List<HighLevelCustomFieldValue> fields,
+            Lead lead,
+            String locationId
+    ) {
+
         addCustomField(
                 fields,
                 locationId,
@@ -322,10 +400,14 @@ public class HighLevelAgencyCrmClient
                 FIELD_LEAD_SOURCE,
                 lead.getSource()
         );
+    }
 
-        /*
-         * Client-specific qualification data.
-         */
+    private void addClientCustomFields(
+            List<HighLevelCustomFieldValue> fields,
+            Lead lead,
+            String locationId
+    ) {
+
         ClientLeadDetails details =
                 clientLeadDetailsRepository
                         .findByLeadPublicId(
@@ -334,7 +416,7 @@ public class HighLevelAgencyCrmClient
                         .orElse(null);
 
         if (details == null) {
-            return fields;
+            return;
         }
 
         addCustomField(
@@ -378,8 +460,87 @@ public class HighLevelAgencyCrmClient
                 FIELD_AI_SUMMARY,
                 details.getAiSummary()
         );
+    }
 
-        return fields;
+    private void addCaregiverCustomFields(
+            List<HighLevelCustomFieldValue> fields,
+            Lead lead,
+            String locationId
+    ) {
+
+        CaregiverLeadDetails details =
+                caregiverLeadDetailsRepository
+                        .findByLeadPublicId(
+                                lead.getPublicId()
+                        )
+                        .orElse(null);
+
+        if (details == null) {
+            return;
+        }
+
+        addCustomField(
+                fields,
+                locationId,
+                FIELD_YEARS_EXPERIENCE,
+                details.getYearsExperience()
+        );
+
+        addCustomField(
+                fields,
+                locationId,
+                FIELD_CERTIFICATIONS,
+                details.getCertifications()
+        );
+
+        addCustomField(
+                fields,
+                locationId,
+                FIELD_AVAILABILITY,
+                details.getAvailability()
+        );
+
+        addCustomField(
+                fields,
+                locationId,
+                FIELD_TRANSPORTATION,
+                details.getTransportation()
+        );
+
+        addCustomField(
+                fields,
+                locationId,
+                FIELD_PREFERRED_SCHEDULE,
+                details.getPreferredSchedule()
+        );
+
+        addCustomField(
+                fields,
+                locationId,
+                FIELD_DESIRED_HOURS_PER_WEEK,
+                details.getDesiredHoursPerWeek()
+        );
+
+        addCustomField(
+                fields,
+                locationId,
+                FIELD_SERVICE_AREA,
+                details.getServiceArea()
+        );
+
+        addCustomField(
+                fields,
+                locationId,
+                FIELD_AI_SCREENING_SCORE,
+                details.getAiScreeningScore()
+        );
+
+        addCustomField(
+                fields,
+                locationId,
+                FIELD_AI_SCREENING_SUMMARY,
+                details.getAiScreeningSummary()
+        );
     }
 
     private void addCustomField(
@@ -409,10 +570,8 @@ public class HighLevelAgencyCrmClient
                         .orElse(null);
 
         /*
-         * Do not fail the entire agency CRM synchronization merely
-         * because one optional custom field is not configured.
-         *
-         * The agency can still receive the contact and opportunity.
+         * Optional custom-field mappings must not prevent
+         * the contact/opportunity from reaching the agency.
          */
         if (mapping == null) {
             return;
