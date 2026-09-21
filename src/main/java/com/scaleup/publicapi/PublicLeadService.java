@@ -13,6 +13,8 @@ import com.scaleup.integration.CrmDestination;
 import com.scaleup.integration.CrmSyncStatus;
 import com.scaleup.integration.LeadCrmSync;
 import com.scaleup.integration.LeadCrmSyncRepository;
+import com.scaleup.integration.highlevel.HighLevelFieldValueMapper;
+import com.scaleup.integration.internalcrm.InternalCrmSyncRequestedEvent;
 import com.scaleup.lead.Lead;
 import com.scaleup.lead.LeadRepository;
 import com.scaleup.lead.LeadType;
@@ -20,10 +22,9 @@ import com.scaleup.publicapi.dto.CaregiverLeadRequest;
 import com.scaleup.publicapi.dto.ClientLeadRequest;
 import com.scaleup.publicapi.dto.CreateLeadRequest;
 import com.scaleup.publicapi.dto.LeadCreatedResponse;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.scaleup.integration.internalcrm.InternalCrmSyncRequestedEvent;
-import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.LocalDateTime;
 
@@ -42,7 +43,11 @@ public class PublicLeadService {
     private final LeadCrmSyncRepository
             leadCrmSyncRepository;
 
-    private final ApplicationEventPublisher eventPublisher;
+    private final ApplicationEventPublisher
+            eventPublisher;
+
+    private final HighLevelFieldValueMapper
+            fieldValueMapper;
 
     public PublicLeadService(
             CampaignRepository campaignRepository,
@@ -50,8 +55,10 @@ public class PublicLeadService {
             ClientLeadDetailsRepository clientLeadDetailsRepository,
             CaregiverLeadDetailsRepository caregiverLeadDetailsRepository,
             LeadCrmSyncRepository leadCrmSyncRepository,
-            ApplicationEventPublisher eventPublisher
+            ApplicationEventPublisher eventPublisher,
+            HighLevelFieldValueMapper fieldValueMapper
     ) {
+
         this.campaignRepository =
                 campaignRepository;
 
@@ -70,6 +77,8 @@ public class PublicLeadService {
         this.eventPublisher =
                 eventPublisher;
 
+        this.fieldValueMapper =
+                fieldValueMapper;
     }
 
     @Transactional
@@ -107,7 +116,23 @@ public class PublicLeadService {
                         campaign.getCampaignType()
                 );
 
+        /*
+         * Validate campaign-specific payload structure first.
+         */
         validateDetailPayload(
+                leadType,
+                request
+        );
+
+        /*
+         * Validate CRM-controlled option values BEFORE
+         * creating or saving the Lead.
+         *
+         * This prevents bad values from being persisted
+         * successfully and then failing later during the
+         * asynchronous CRM synchronization.
+         */
+        validateMappedValues(
                 leadType,
                 request
         );
@@ -156,11 +181,16 @@ public class PublicLeadService {
                         request.consentGiven()
                 )
         ) {
-            lead.recordConsent(now);
+
+            lead.recordConsent(
+                    now
+            );
         }
 
         Lead savedLead =
-                leadRepository.save(lead);
+                leadRepository.save(
+                        lead
+                );
 
         createLeadDetails(
                 savedLead,
@@ -176,9 +206,18 @@ public class PublicLeadService {
          * before the API response is returned.
          */
         leadRepository.flush();
+
         clientLeadDetailsRepository.flush();
+
         caregiverLeadDetailsRepository.flush();
+
         leadCrmSyncRepository.flush();
+
+        /*
+         * Internal CRM synchronization is requested only
+         * after all lead data has been persisted
+         * successfully.
+         */
         eventPublisher.publishEvent(
                 new InternalCrmSyncRequestedEvent(
                         savedLead.getPublicId()
@@ -247,12 +286,14 @@ public class PublicLeadService {
     ) {
 
         if (!campaign.getAgency().isActive()) {
+
             throw new InvalidRequestException(
                     "This campaign is not currently accepting submissions."
             );
         }
 
         if (!campaign.isCurrentlyActive(now)) {
+
             throw new InvalidRequestException(
                     "This campaign is not currently accepting submissions."
             );
@@ -281,6 +322,7 @@ public class PublicLeadService {
         if (leadType == LeadType.CLIENT) {
 
             if (request.caregiverDetails() != null) {
+
                 throw new InvalidRequestException(
                         "Caregiver details cannot be submitted for a client campaign."
                 );
@@ -290,10 +332,115 @@ public class PublicLeadService {
         }
 
         if (request.clientDetails() != null) {
+
             throw new InvalidRequestException(
                     "Client details cannot be submitted for a caregiver campaign."
             );
         }
+    }
+
+    /*
+     * Validates values that must match the vocabulary
+     * supported by our CRM mappings.
+     *
+     * HighLevelFieldValueMapper remains the single source
+     * of truth for accepted option values.
+     */
+    private void validateMappedValues(
+            LeadType leadType,
+            CreateLeadRequest request
+    ) {
+
+        try {
+
+            /*
+             * Shared fields.
+             */
+            if (request.preferredContactMethod() != null) {
+
+                fieldValueMapper
+                        .mapPreferredContactMethod(
+                                request.preferredContactMethod().name()
+                        );
+            }
+
+            if (leadType == LeadType.CLIENT) {
+
+                validateClientMappedValues(
+                        request.clientDetails()
+                );
+
+                return;
+            }
+
+            validateCaregiverMappedValues(
+                    request.caregiverDetails()
+            );
+
+        } catch (IllegalArgumentException exception) {
+
+            /*
+             * Convert mapper validation failures into a
+             * public API request error instead of allowing
+             * them to surface later during async CRM sync.
+             */
+            throw new InvalidRequestException(
+                    exception.getMessage()
+            );
+        }
+    }
+
+    private void validateClientMappedValues(
+            ClientLeadRequest request
+    ) {
+
+        if (request == null) {
+            return;
+        }
+
+        fieldValueMapper
+                .mapServiceNeeded(
+                        request.serviceNeeded()
+                );
+
+        fieldValueMapper
+                .mapCareStartTimeline(
+                        request.careStartTimeline()
+                );
+
+        fieldValueMapper
+                .mapPayerType(
+                        request.payerType()
+                );
+
+        fieldValueMapper
+                .mapDecisionMaker(
+                        request.decisionMaker()
+                );
+    }
+
+    private void validateCaregiverMappedValues(
+            CaregiverLeadRequest request
+    ) {
+
+        if (request == null) {
+            return;
+        }
+
+        fieldValueMapper
+                .mapAvailability(
+                        request.availability()
+                );
+
+        fieldValueMapper
+                .mapTransportation(
+                        request.transportation()
+                );
+
+        fieldValueMapper
+                .mapPreferredSchedule(
+                        request.preferredSchedule()
+                );
     }
 
     private void createClientDetails(
@@ -367,6 +514,7 @@ public class PublicLeadService {
                 value == null
                         || value.isBlank()
         ) {
+
             throw new InvalidRequestException(
                     fieldName
                             + " must not be blank."

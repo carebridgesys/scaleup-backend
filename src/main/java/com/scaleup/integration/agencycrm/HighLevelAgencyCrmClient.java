@@ -1,10 +1,15 @@
 package com.scaleup.integration.agencycrm;
 
 import com.scaleup.agency.Agency;
+import com.scaleup.clientlead.ClientLeadDetails;
+import com.scaleup.clientlead.ClientLeadDetailsRepository;
+import com.scaleup.integration.highlevel.HighLevelCustomFieldMapping;
+import com.scaleup.integration.highlevel.HighLevelCustomFieldMappingRepository;
 import com.scaleup.integration.highlevel.HighLevelPipelineMapping;
 import com.scaleup.integration.highlevel.HighLevelPipelineMappingRepository;
 import com.scaleup.integration.highlevel.dto.HighLevelContactRequest;
 import com.scaleup.integration.highlevel.dto.HighLevelContactResponse;
+import com.scaleup.integration.highlevel.dto.HighLevelCustomFieldValue;
 import com.scaleup.integration.highlevel.dto.HighLevelOpportunityRequest;
 import com.scaleup.integration.highlevel.dto.HighLevelOpportunityResponse;
 import com.scaleup.lead.Lead;
@@ -21,14 +26,49 @@ import java.util.List;
 public class HighLevelAgencyCrmClient
         implements AgencyCrmClient {
 
-    private final RestClient
-            highLevelRestClient;
+    private static final String FIELD_SERVICE_NEEDED =
+            "contact.service_needed";
+
+    private static final String FIELD_CARE_START_TIMELINE =
+            "contact.care_start_timeline";
+
+    private static final String FIELD_PAYER_TYPE =
+            "contact.payer_type";
+
+    private static final String FIELD_DECISION_MAKER =
+            "contact.decision_maker";
+
+    private static final String FIELD_PREFERRED_CONTACT_METHOD =
+            "contact.preferred_contact_method";
+
+    private static final String FIELD_LEAD_SOURCE =
+            "contact.lead_source";
+
+    private static final String FIELD_CAMPAIGN_NAME =
+            "contact.campaign_name";
+
+    private static final String FIELD_AI_QUALIFICATION_SCORE =
+            "contact.ai_qualification_score";
+
+    private static final String FIELD_AI_SUMMARY =
+            "contact.ai_summary";
+
+    private static final String FIELD_ZIP_CODE =
+            "contact.zip_code";
+
+    private final RestClient highLevelRestClient;
 
     private final HighLevelPipelineMappingRepository
             pipelineMappingRepository;
 
     private final AgencyHighLevelConnectionRepository
             connectionRepository;
+
+    private final HighLevelCustomFieldMappingRepository
+            customFieldMappingRepository;
+
+    private final ClientLeadDetailsRepository
+            clientLeadDetailsRepository;
 
     private final SecretEncryptionService
             secretEncryptionService;
@@ -37,6 +77,8 @@ public class HighLevelAgencyCrmClient
             RestClient highLevelRestClient,
             HighLevelPipelineMappingRepository pipelineMappingRepository,
             AgencyHighLevelConnectionRepository connectionRepository,
+            HighLevelCustomFieldMappingRepository customFieldMappingRepository,
+            ClientLeadDetailsRepository clientLeadDetailsRepository,
             SecretEncryptionService secretEncryptionService
     ) {
 
@@ -48,6 +90,12 @@ public class HighLevelAgencyCrmClient
 
         this.connectionRepository =
                 connectionRepository;
+
+        this.customFieldMappingRepository =
+                customFieldMappingRepository;
+
+        this.clientLeadDetailsRepository =
+                clientLeadDetailsRepository;
 
         this.secretEncryptionService =
                 secretEncryptionService;
@@ -168,6 +216,12 @@ public class HighLevelAgencyCrmClient
                         lead
                 );
 
+        List<HighLevelCustomFieldValue> customFields =
+                buildCustomFields(
+                        lead,
+                        locationId
+                );
+
         HighLevelContactRequest request =
                 new HighLevelContactRequest(
                         locationId,
@@ -177,7 +231,7 @@ public class HighLevelAgencyCrmClient
                         lead.getPhone(),
                         lead.getSource(),
                         tags,
-                        List.of()
+                        customFields
                 );
 
         HighLevelContactResponse response =
@@ -214,6 +268,172 @@ public class HighLevelAgencyCrmClient
                 .contact()
                 .id()
                 .trim();
+    }
+
+    private List<HighLevelCustomFieldValue> buildCustomFields(
+            Lead lead,
+            String locationId
+    ) {
+
+        List<HighLevelCustomFieldValue> fields =
+                new ArrayList<>();
+
+        /*
+         * Agency destination custom-field handoff is currently
+         * implemented for CLIENT leads.
+         *
+         * CAREGIVER fields will be added after caregiver destination
+         * custom fields are configured and synchronized.
+         */
+        if (lead.getLeadType() != LeadType.CLIENT) {
+            return fields;
+        }
+
+        /*
+         * Values available directly from the base Lead.
+         */
+        addCustomField(
+                fields,
+                locationId,
+                FIELD_ZIP_CODE,
+                lead.getZipCode()
+        );
+
+        addCustomField(
+                fields,
+                locationId,
+                FIELD_PREFERRED_CONTACT_METHOD,
+                lead.getPreferredContactMethod()
+        );
+
+        if (lead.getCampaign() != null) {
+
+            addCustomField(
+                    fields,
+                    locationId,
+                    FIELD_CAMPAIGN_NAME,
+                    lead.getCampaign().getName()
+            );
+        }
+
+        addCustomField(
+                fields,
+                locationId,
+                FIELD_LEAD_SOURCE,
+                lead.getSource()
+        );
+
+        /*
+         * Client-specific qualification data.
+         */
+        ClientLeadDetails details =
+                clientLeadDetailsRepository
+                        .findByLeadPublicId(
+                                lead.getPublicId()
+                        )
+                        .orElse(null);
+
+        if (details == null) {
+            return fields;
+        }
+
+        addCustomField(
+                fields,
+                locationId,
+                FIELD_SERVICE_NEEDED,
+                details.getServiceNeeded()
+        );
+
+        addCustomField(
+                fields,
+                locationId,
+                FIELD_CARE_START_TIMELINE,
+                details.getCareStartTimeline()
+        );
+
+        addCustomField(
+                fields,
+                locationId,
+                FIELD_PAYER_TYPE,
+                details.getPayerType()
+        );
+
+        addCustomField(
+                fields,
+                locationId,
+                FIELD_DECISION_MAKER,
+                details.getDecisionMaker()
+        );
+
+        addCustomField(
+                fields,
+                locationId,
+                FIELD_AI_QUALIFICATION_SCORE,
+                details.getAiQualificationScore()
+        );
+
+        addCustomField(
+                fields,
+                locationId,
+                FIELD_AI_SUMMARY,
+                details.getAiSummary()
+        );
+
+        return fields;
+    }
+
+    private void addCustomField(
+            List<HighLevelCustomFieldValue> fields,
+            String locationId,
+            String fieldKey,
+            Object value
+    ) {
+
+        if (value == null) {
+            return;
+        }
+
+        if (
+                value instanceof String stringValue
+                        && stringValue.isBlank()
+        ) {
+            return;
+        }
+
+        HighLevelCustomFieldMapping mapping =
+                customFieldMappingRepository
+                        .findByLocationIdAndFieldKeyAndActiveTrue(
+                                locationId,
+                                fieldKey
+                        )
+                        .orElse(null);
+
+        /*
+         * Do not fail the entire agency CRM synchronization merely
+         * because one optional custom field is not configured.
+         *
+         * The agency can still receive the contact and opportunity.
+         */
+        if (mapping == null) {
+            return;
+        }
+
+        String externalFieldId =
+                mapping.getExternalFieldId();
+
+        if (
+                externalFieldId == null
+                        || externalFieldId.isBlank()
+        ) {
+            return;
+        }
+
+        fields.add(
+                new HighLevelCustomFieldValue(
+                        externalFieldId.trim(),
+                        value
+                )
+        );
     }
 
     private String createOrUpdateOpportunity(

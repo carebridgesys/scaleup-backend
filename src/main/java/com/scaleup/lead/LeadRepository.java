@@ -13,11 +13,23 @@ public interface LeadRepository
         extends JpaRepository<Lead, Long>,
         JpaSpecificationExecutor<Lead> {
 
-    @EntityGraph(attributePaths = "agency")
+    /*
+     * Agency and campaign are required by downstream
+     * CRM synchronization logic.
+     *
+     * Both relationships are LAZY on Lead, so explicitly
+     * fetch them here to prevent LazyInitializationException
+     * when the lead is later used by an async CRM worker.
+     */
+    @EntityGraph(
+            attributePaths = {
+                    "agency",
+                    "campaign"
+            }
+    )
     Optional<Lead> findByPublicId(
             UUID publicId
     );
-
 
     Page<Lead> findByAgencyPublicId(
             UUID agencyPublicId,
